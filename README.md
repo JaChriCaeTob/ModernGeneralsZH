@@ -7,6 +7,11 @@ GPL v3). **This version is based on the community fix version**: it is the commu
 work come from that project, not from this fork. It tries to make **Zero Hour** build and run as a **64-bit program on top of Vulkan**, and adds a handful of
 updated visual effects.
 
+> **Credit:** all of the actual work in this repository (the code changes, build scripts, shaders, patches and
+> documentation) was done by **Claude Code** (Anthropic's AI coding agent). The person who set this repository up only gave
+> prompts, like a beginner, and did not write or engineer any of it. The underlying game code and its fixes come from the
+> community project and EA's original release, see [Licenses and credits](#licenses-and-credits).
+
 > **One-time project: no support, no updates.**
 > This was done once, as a personal experiment. It will **not** be troubleshot, answered in issues, or kept up to date with
 > upstream or with new tools. Fork it, change it, take pieces of it, do whatever you like with it (within the license, see
@@ -335,6 +340,9 @@ Core/GameEngineDevice/.../Water/Shaders/   water shaders (HLSL + compiled header
 
 ## Licenses and credits
 
+- **Who did the work here:** Claude Code (Anthropic) wrote the changes, scripts, shaders, patches and documentation in this
+  repository; the repository owner only supplied prompts and testing feedback. Any credit for the work done in this fork
+  belongs to Claude Code. Any mistakes in it are the project's own, not the upstream authors'.
 - The game code is licensed under **GPL v3 with EA's additional terms**, see [LICENSE.md](LICENSE.md). The changes in this
   repository are released under the same license.
 - Upstream: the [TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode) contributors.
