@@ -242,7 +242,7 @@ SoundSceneObjClass::On_Event
 				break;
 
 			case AudioCallbackClass::EVENT_LOGICAL_HEARD:
-				m_pCallback->On_Logical_Heard ((LogicalListenerClass *)param1, (LogicalSoundClass *)param2);
+				m_pCallback->On_Logical_Heard ((LogicalListenerClass *)(uintptr_t)param1, (LogicalSoundClass *)(uintptr_t)param2);
 				break;
 		}
 	}

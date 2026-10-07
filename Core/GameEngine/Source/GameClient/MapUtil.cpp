@@ -844,7 +844,7 @@ static Bool addMapToMapListbox(
 
 		if (lbData.numColumns > 1)
 		{
-			GadgetListBoxSetItemData( lbData.listbox, (void *)imageItemData, index, 1 );
+			GadgetListBoxSetItemData( lbData.listbox, (void *)(intptr_t)imageItemData, index, 1 );
 		}
 
 		// TheSuperHackers @performance Now stops processing when the list is full.

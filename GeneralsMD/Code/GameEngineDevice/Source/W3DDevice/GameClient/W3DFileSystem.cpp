@@ -51,6 +51,8 @@
 
 #include <io.h>
 
+extern Bool g_ignoreLocalizedModels; // CommandLine.cpp, set by -uncensored
+
 // DEFINES ////////////////////////////////////////////////////////////////////////////////////////
 
 //-------------------------------------------------------------------------------------------------
@@ -169,12 +171,24 @@ char const * GameFileClass::Set_Name( char const *filename )
 	GameFileType fileType = getFileType(filename);
 
 	// We need to be able to grab w3d's from a localization dir, since Germany hates exploding people units.
+	// -uncensored skips that override so the original models from the base archives are used.
 	if( fileType == FILE_TYPE_W3D )
 	{
 		static const char *localizedPathFormat = "Data/%s/Art/W3D/";
 		sprintf(m_filePath,localizedPathFormat, GetRegistryLanguage().str());
 		strlcat(m_filePath, filename, ARRAY_SIZE(m_filePath));
 
+		if( g_ignoreLocalizedModels )
+		{
+			// -uncensored: prefer the model from the base archives / mods and only fall back to the
+			// localized one when there is no base version (e.g. models that only the localized pack ships).
+			char basePath[_MAX_PATH];
+			snprintf(basePath, ARRAY_SIZE(basePath), "%s%s", W3D_DIR_PATH, filename);
+			if( TheFileSystem->doesFileExist( basePath ) )
+			{
+				m_filePath[0] = '\0'; // also avoids a stale path in the existence check below
+			}
+		}
 	}
 	// We need to be able to grab images from a localization dir, because Art has a fetish for baked-in text.  Munkee.
 	else if( isImageFileType(fileType) )
@@ -183,6 +197,15 @@ char const * GameFileClass::Set_Name( char const *filename )
 		sprintf(m_filePath,localizedPathFormat, GetRegistryLanguage().str());
 		strlcat(m_filePath, filename, ARRAY_SIZE(m_filePath));
 
+		// -uncensored: the localized "drone" skins replace the original terrorist textures.
+		if( g_ignoreLocalizedModels )
+		{
+			char lowered[_MAX_PATH];
+			strlcpy( lowered, filename, ARRAY_SIZE(lowered) );
+			_strlwr( lowered );
+			if( strstr( lowered, "drone" ) )
+				m_filePath[0] = '\0';
+		}
 	}
 
 	// see if the file exists

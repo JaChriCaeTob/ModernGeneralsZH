@@ -104,6 +104,24 @@
                 }
             }
         },
+    {
+            "name": "win64",
+            "inherits": "default",
+            "hidden": false,
+            "displayName": "Windows 64bit Release (experimental)",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "RTS_FLAGS": "/W3"
+            },
+            "vendor": {
+                "jetbrains.com/clion": {
+                    "toolchain": "Visual Studio"
+                }
+            }
+        },
         {
             "name": "win32-profile",
             "inherits": "win32",
@@ -128,6 +146,24 @@
             "displayName": "Windows 32bit VCPKG Release",
             "architecture": {
                 "value": "Win32",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "RTS_FLAGS": "/W3"
+            },
+            "vendor": {
+                "jetbrains.com/clion": {
+                    "toolchain": "Visual Studio"
+                }
+            }
+        },
+    {
+            "name": "win64-vcpkg",
+            "inherits": "default-vcpkg",
+            "hidden": false,
+            "displayName": "Windows 64bit VCPKG Release (experimental)",
+            "architecture": {
+                "value": "x64",
                 "strategy": "external"
             },
             "cacheVariables": {
@@ -231,6 +267,13 @@
             "description": "Build Windows 32bit Release",
             "configuration": "Release"
         },
+    {
+            "name": "win64",
+            "configurePreset": "win64",
+            "displayName": "Build Windows 64bit (experimental) Release",
+            "description": "Build Windows 64bit (experimental) Release",
+            "configuration": "Release"
+        },
         {
             "name": "win32-profile",
             "configurePreset": "win32-profile",
@@ -250,6 +293,13 @@
             "configurePreset": "win32-vcpkg",
             "displayName": "Build Windows 32bit VCPKG Release",
             "description": "Build Windows 32bit VCPKG Release",
+            "configuration": "Release"
+        },
+    {
+            "name": "win64-vcpkg",
+            "configurePreset": "win64-vcpkg",
+            "displayName": "Build Windows 64bit (experimental) VCPKG Release",
+            "description": "Build Windows 64bit (experimental) VCPKG Release",
             "configuration": "Release"
         },
         {

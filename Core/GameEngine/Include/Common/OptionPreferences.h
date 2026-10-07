@@ -114,6 +114,10 @@ public:
 	Bool getUseHeatEffects();
 	Bool getDynamicLODEnabled();
 	Bool getFPSLimitEnabled();
+	Bool isFPSLimitDisabledByUser(); ///< Options.ini explicitly says FPSLimit = no, so no game start or detail level may re-enable the cap
+	Bool getUpdatedWaterEnabled(); ///< updated water shaders, Options.ini key "UpdatedWater" (default yes)
+	Bool getWaterReflectionsEnabled(); ///< planar reflection render of the updated water, Options.ini key "WaterReflections" (default yes)
+	Bool getShockwavesEnabled(); ///< explosion shockwave ring effect, Options.ini key "Shockwaves" (default yes)
 	Bool getBuildingOcclusionEnabled();
 	Int getParticleCap();
 

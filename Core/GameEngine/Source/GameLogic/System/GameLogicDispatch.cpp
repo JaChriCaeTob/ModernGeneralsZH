@@ -32,6 +32,7 @@
 
 #include "Common/CRCDebug.h"
 #include "Common/FramePacer.h"
+#include "Common/OptionPreferences.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
 #include "Common/GlobalData.h"
@@ -884,7 +885,12 @@ bool GameLogic::onNewGame(MAYBE_UNUSED GameMessage *msg)
 			maxFPS = TheGlobalData->m_framesPerSecondLimit;
 		DEBUG_LOG(("Setting max FPS limit to %d FPS", maxFPS));
 		TheFramePacer->setFramesPerSecondLimit(maxFPS);
-		TheWritableGlobalData->m_useFpsLimit = true;
+		{
+			// A skirmish start must not undo Options.ini FPSLimit = no (this flag is global and would stay on in the menus too).
+			OptionPreferences optionPref;
+			if (!optionPref.isFPSLimitDisabledByUser())
+				TheWritableGlobalData->m_useFpsLimit = true;
+		}
 	}
 
 	// prepare for new game

@@ -662,6 +662,39 @@ Bool OptionPreferences::getDynamicLODEnabled()
 	return FALSE;
 }
 
+Bool OptionPreferences::getUpdatedWaterEnabled()
+{
+	OptionPreferences::const_iterator it = find("UpdatedWater");
+	if (it == end())
+		return TRUE;
+
+	return stricmp(it->second.str(), "no") != 0;
+}
+
+Bool OptionPreferences::getWaterReflectionsEnabled()
+{
+	OptionPreferences::const_iterator it = find("WaterReflections");
+	if (it == end())
+		return TRUE;
+
+	return stricmp(it->second.str(), "no") != 0;
+}
+
+Bool OptionPreferences::getShockwavesEnabled()
+{
+	OptionPreferences::const_iterator it = find("Shockwaves");
+	if (it == end())
+		return TRUE;
+
+	return stricmp(it->second.str(), "no") != 0;
+}
+
+Bool OptionPreferences::isFPSLimitDisabledByUser()
+{
+	OptionPreferences::const_iterator it = find("FPSLimit");
+	return it != end() && stricmp(it->second.str(), "no") == 0;
+}
+
 Bool OptionPreferences::getFPSLimitEnabled()
 {
 	OptionPreferences::const_iterator it = find("FPSLimit");

@@ -115,6 +115,16 @@ Int parseNoLogOrCrash(char *args[], int)
 
 //=============================================================================
 //=============================================================================
+// Set by -uncensored: ignore localized W3D model overrides (e.g. the German no-gore replacements).
+Bool g_ignoreLocalizedModels = FALSE;
+
+Int parseUncensored(char *args[], int)
+{
+	g_ignoreLocalizedModels = TRUE;
+
+	return 1;
+}
+
 Int parseWin(char *args[], int)
 {
 	TheWritableGlobalData->m_windowed = true;
@@ -1164,6 +1174,7 @@ Int parseClearDebugLevel(char *args[], int num)
 static CommandLineParam paramsForStartup[] =
 {
 	{ "-win", parseWin },
+	{ "-uncensored", parseUncensored },
 	{ "-fullscreen", parseNoWin },
 
 	// TheSuperHackers @feature helmutbuhler 11/04/2025

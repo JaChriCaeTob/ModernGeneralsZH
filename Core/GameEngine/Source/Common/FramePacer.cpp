@@ -211,8 +211,10 @@ Int FramePacer::getActualLogicTimeScaleFps(LogicTimeQueryFlags flags) const
 		return getLogicTimeScaleFps();
 	}
 
-	// Returns uncapped value to align with the render update as per the original game behavior.
-	return RenderFpsPreset::UncappedFpsValue;
+	// The original game ran logic in lock step with a render update capped at 30 fps. When the render fps is
+	// capped at or below the logic rate, the logic still follows the render update (slow machine behavior).
+	// When the render fps is uncapped or higher, logic stays at its native rate and only rendering speeds up.
+	return getLogicTimeScaleFps();
 }
 
 Real FramePacer::getActualLogicTimeScaleRatio(LogicTimeQueryFlags flags) const

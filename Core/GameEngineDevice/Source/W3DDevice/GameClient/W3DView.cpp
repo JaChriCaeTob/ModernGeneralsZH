@@ -87,6 +87,8 @@
 #include "W3DDevice/GameClient/W3DView.h"
 #include "d3dx8math.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
+#include "W3DDevice/GameClient/W3DShockwave.h"
+#include "GameClient/Shockwave.h"
 #include "W3DDevice/GameClient/Module/W3DModelDraw.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
 
@@ -1873,6 +1875,16 @@ void W3DView::draw()
 		W3DDisplay::m_3DScene->doRender( m_3DCamera );
 		W3DDisplay::m_3DScene->Set_Extra_Pass_Polygon_Mode(SceneClass::EXTRA_PASS_DISABLE);
 		m_isWireFrameEnabled = m_nextWireFrameEnabled;
+	}
+
+	// Explosion shockwave rings, drawn over the finished 3D scene. A script view filter that renders the scene into a
+	// texture owns the picture until its own post render, so the rings are skipped while one is active.
+	if (!skipRender &&
+			!W3DShaderManager::isRenderingToTexture() &&
+			(m_viewFilterMode == FM_NULL_MODE || m_viewFilter == FT_NULL_FILTER || m_viewFilter == FT_VIEW_DEFAULT) &&
+			W3DShockwave::isActive())
+	{
+		W3DShockwave::render();
 	}
 
 	if (m_viewFilterMode &&

@@ -1984,7 +1984,7 @@ AGAIN:
 
 			TheParticleSystemManager->DRAW();
 
-			if (TheWaterRenderObj && TheGlobalData->m_waterType == 2)
+			if (TheWaterRenderObj && (TheGlobalData->m_waterType == 2 || TheWaterRenderObj->wantsMirrorUpdate()))
 				TheWaterRenderObj->updateRenderTargetTextures(primaryW3DView->get3DCamera());	//do a render into each texture
 
 			//Can't render into textures while rendering to screen so these textures need to be updated

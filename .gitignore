@@ -67,3 +67,5 @@ build.ninja
 ## Python
 __pycache__/
 *.pyc
+# Patched DXVK build tree (tools/dxvk/build-dxvk.ps1)
+/tools/dxvk/work/

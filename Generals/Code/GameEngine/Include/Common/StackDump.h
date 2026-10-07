@@ -24,7 +24,7 @@
 
 #pragma once
 
-#ifndef IG_DEBUG_STACKTRACE
+#if !defined(IG_DEBUG_STACKTRACE) && !defined(_WIN64) // stack walking is x86 only
 #define IG_DEBUG_STACKTRACE	1
 #endif // Unsure about this one -ML 3/25/03
 #if defined(RTS_DEBUG) || defined(IG_DEBUG_STACKTRACE)

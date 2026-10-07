@@ -278,6 +278,19 @@ static void Add_Txt (char const *txt)
  * HISTORY:                                                                                    *
  *    7/22/97 12:21PM ST : Created                                                             *
  *=============================================================================================*/
+#ifdef _WIN64
+// The register/stack dump below is x86 specific. On x64 just record the exception code and address.
+void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
+{
+	char text[256];
+	_snprintf(text, sizeof(text), "Exception code %08lX at address %p\r\n",
+		e_info && e_info->ExceptionRecord ? e_info->ExceptionRecord->ExceptionCode : 0UL,
+		e_info && e_info->ExceptionRecord ? e_info->ExceptionRecord->ExceptionAddress : nullptr);
+	text[sizeof(text) - 1] = 0;
+	strncpy(ExceptionText, text, sizeof(ExceptionText) - 1);
+	ExceptionText[sizeof(ExceptionText) - 1] = 0;
+}
+#else
 void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 {
 	/*
@@ -733,6 +746,8 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 
 
 
+
+#endif // _WIN64
 
 /***********************************************************************************************
  * Exception_Handler -- Exception handler filter function                                      *
@@ -1204,6 +1219,13 @@ bool Lookup_Symbol(void *code_ptr, char *symbol, int &displacement)
  * HISTORY:                                                                                    *
  *   6/12/2001 11:57AM ST : Created                                                            *
  *=============================================================================================*/
+#ifdef _WIN64
+int Stack_Walk(unsigned long *, int, CONTEXT *)
+{
+	// Return addresses do not fit in 32-bit values; stack walking is not supported on x64.
+	return 0;
+}
+#else
 int Stack_Walk(unsigned long *return_addresses, int num_addresses, CONTEXT *context)
 {
 	static HINSTANCE _imagehelp = (HINSTANCE) -1;
@@ -1290,6 +1312,7 @@ here:
 
 	return(pointer_index);
 }
+#endif // _WIN64
 
 
 

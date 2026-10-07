@@ -1601,40 +1601,42 @@ void MilesAudioManager::notifyOfAudioCompletion( UnsignedInt handle, UnsignedInt
 }
 
 //-------------------------------------------------------------------------------------------------
+// Miles handles are passed to the completion callbacks as 32-bit ids (see set*Completed); on 64-bit builds
+// the pointer is truncated, so lookups must compare the truncated ids.
+template<typename T> static inline UnsignedInt handleId(T handle) { return (UnsignedInt)(uintptr_t)handle; }
+
+//-------------------------------------------------------------------------------------------------
 PlayingAudio *MilesAudioManager::findPlayingAudioFrom( UnsignedInt handle, UnsignedInt flags )
 {
 	std::list<PlayingAudio *>::iterator it;
 	PlayingAudio *playing;
 
 	if (flags == PAT_Sample) {
-		HSAMPLE sample = (HSAMPLE) handle;
 		CriticalSectionClass::LockClass lock(m_playingSoundsCS);
 		for (it = m_playingSounds.begin(); it != m_playingSounds.end(); ++it) {
 			playing = *it;
-			if (playing->m_sample == sample) {
+			if (handleId(playing->m_sample) == handle) {
 				return playing;
 			}
 		}
 	}
 
 	if (flags == PAT_3DSample) {
-		H3DSAMPLE sample3D = (H3DSAMPLE) handle;
 		CriticalSectionClass::LockClass lock(m_playing3DSoundsCS);
 		for (it = m_playing3DSounds.begin(); it != m_playing3DSounds.end(); ++it) {
 			playing = *it;
-			if (playing->m_3DSample == sample3D) {
+			if (handleId(playing->m_3DSample) == handle) {
 				return playing;
 			}
 		}
 	}
 
 	if (flags == PAT_Stream) {
-		HSTREAM stream = (HSTREAM) handle;
 		{
 			CriticalSectionClass::LockClass lock(m_playingStreamsCS);
 			for (it = m_playingStreams.begin(); it != m_playingStreams.end(); ++it) {
 				playing = *it;
-				if (playing->m_stream == stream) {
+				if (handleId(playing->m_stream) == handle) {
 					return playing;
 				}
 			}
@@ -1643,7 +1645,7 @@ PlayingAudio *MilesAudioManager::findPlayingAudioFrom( UnsignedInt handle, Unsig
 			CriticalSectionClass::LockClass lock(m_fadingAudioCS);
 			for (it = m_fadingAudio.begin(); it != m_fadingAudio.end(); ++it) {
 				playing = *it;
-				if (playing->m_stream == stream) {
+				if (handleId(playing->m_stream) == handle) {
 					return playing;
 				}
 			}
@@ -3027,19 +3029,19 @@ void MilesAudioManager::friend_forcePlayAudioEventRTS(const AudioEventRTS* event
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK setSampleCompleted( HSAMPLE sampleCompleted )
 {
-	TheAudio->notifyOfAudioCompletion((UnsignedInt) sampleCompleted, PAT_Sample);
+	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t) sampleCompleted, PAT_Sample);
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK set3DSampleCompleted( H3DSAMPLE sample3DCompleted )
 {
-	TheAudio->notifyOfAudioCompletion((UnsignedInt) sample3DCompleted, PAT_3DSample);
+	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t) sample3DCompleted, PAT_3DSample);
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK setStreamCompleted( HSTREAM streamCompleted )
 {
-	TheAudio->notifyOfAudioCompletion((UnsignedInt) streamCompleted, PAT_Stream);
+	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t) streamCompleted, PAT_Stream);
 }
 
 //-------------------------------------------------------------------------------------------------

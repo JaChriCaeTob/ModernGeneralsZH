@@ -636,5 +636,9 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 
 #pragma pack(pop)
 
+#else // stack tracing disabled (e.g. 64-bit builds)
+
+AsciiString g_LastErrorDump;
+
 #endif
 

@@ -138,7 +138,7 @@ struct LegacyDDSURFACEDESC2 {
 	};
 	unsigned AlphaBitDepth;
 	unsigned Reserved;
-	void* Surface;
+	unsigned Surface;				// was a pointer in DX7 (4 bytes); keep the on-disk layout on 64-bit
 	union
 	{
 		LegacyDDCOLORKEY CKDestOverlay;
@@ -151,6 +151,8 @@ struct LegacyDDSURFACEDESC2 {
 	LegacyDDSCAPS2 Caps;
 	unsigned TextureStage;
 };
+
+static_assert(sizeof(LegacyDDSURFACEDESC2) == 124, "DDS file header layout must match the on-disk size");
 
 
 enum DDSType

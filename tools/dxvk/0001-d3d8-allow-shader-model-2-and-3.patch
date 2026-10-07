@@ -1,0 +1,15 @@
+diff --git a/src/d3d9/d3d9_device.cpp b/src/d3d9/d3d9_device.cpp
+index 9b72bb2..6d95c47 100644
+--- a/src/d3d9/d3d9_device.cpp
++++ b/src/d3d9/d3d9_device.cpp
+@@ -7932,8 +7932,8 @@ namespace dxvk {
+       }
+     // Pixel shader version checks
+     } else if (ShaderType == D3D9ShaderType::PixelShader) {
+-      const uint32_t shaderModelPS = m_d3dCompatibility.test(D3DCompatibility::D3D8) ? std::min(1u, m_d3d9Options.shaderModel)
+-                                                                                     : m_d3d9Options.shaderModel;
++      // Generals port: allow SM2/SM3 pixel shaders on D3D8 devices (used by the updated water shader).
++      const uint32_t shaderModelPS = m_d3d9Options.shaderModel;
+       if (unlikely(info.getVersion().first > shaderModelPS
+                || (info.getVersion().first == 1 && info.getVersion().second > 4)
+                // Skip checking the SM2 minor version, as it has a 2_x mode apparently

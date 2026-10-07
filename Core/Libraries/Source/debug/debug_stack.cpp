@@ -335,6 +335,18 @@ bool DebugStackwalk::IsOldDbghelp()
   return g_oldDbghelp;
 }
 
+#ifdef _WIN64
+// dbghelp.h maps StackWalk to StackWalk64 on x64, but the class declares the plain name.
+#pragma push_macro("StackWalk")
+#undef StackWalk
+int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *)
+{
+  // Stack walking relies on x86 registers; not supported on x64.
+  sig.m_numAddr=0;
+  return 0;
+}
+#pragma pop_macro("StackWalk")
+#else
 int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
 {
   InitDbghelp();
@@ -403,3 +415,4 @@ int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
 
 	return sig.m_numAddr;
 }
+#endif // _WIN64

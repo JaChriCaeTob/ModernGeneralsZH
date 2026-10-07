@@ -1438,7 +1438,7 @@ void IMEManager::updateCandidateList( Int candidateFlags  )
 
 						for( i=0; i < m_candidateCount; i++ )
 						{
-							Char *string = (Char*) ((UnsignedInt) clist + (UnsignedInt) clist->dwOffset[i]);
+							Char *string = (Char*) ((char*) clist + clist->dwOffset[i]); // pointer arithmetic, not 32-bit integer math
 							if ( unicode )
 							{
 								m_candidateString[i].set( (WideChar *) string);

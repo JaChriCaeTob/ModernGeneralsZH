@@ -55,9 +55,16 @@
 #include "Common/PerfTimer.h"
 #include "Common/Xfer.h"
 #include "Common/GameLOD.h"
+#include "Common/OptionPreferences.h"
 
 #include "GameClient/Color.h"
 #include "GameClient/Water.h"
+#include <map>
+#include "GameClient/GameClient.h"
+#include "GameClient/Drawable.h"
+#include "GameClient/View.h"
+#include "GameLogic/Object.h"
+#include "GameLogic/Module/PhysicsUpdate.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/PolygonTrigger.h"
 #include "GameLogic/ScriptEngine.h"
@@ -65,6 +72,8 @@
 #include "W3DDevice/GameClient/W3DDisplay.h"
 #include "W3DDevice/GameClient/W3DPoly.h"
 #include "W3DDevice/GameClient/W3DScene.h"
+#include "Shaders/WaterModernRiverPS.h"
+#include "Shaders/WaterModernTrapezoidPS.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
 
 
@@ -93,6 +102,7 @@
 #define PATCH_UV_TILES	42	//number of times the bump map texture is tiled across patch (must be integer!).
 #define PATCH_SCALE (4.0f * MAP_XY_FACTOR)	//horizontal scale factor. Adjust this and size to get desired vertex density.
 #define SEA_REFLECTION_SIZE 256		//dimensions of reflection texture
+#define MODERN_REFLECTION_SIZE 512	//dimensions of the reflection texture of the modern water
 
 #define SEA_BUMP_SCALE		(0.06f)		//scales the du/dv offsets stored in bump map (~ amount to perturb)
 #define BUMP_SIZE (50.f)
@@ -165,6 +175,29 @@ static ShaderClass zFillAlphaShader(SC_ZFILL_BLEND3);
 static ShaderClass blendStagesShader(SC_DETAIL_BLEND);
 
 WaterRenderObjClass *TheWaterRenderObj=nullptr; ///<global water rendering object
+
+static Bool g_waterDepthAbsorb = FALSE;	///<updated water: deeper water is bluer and more opaque
+
+/** Fake light absorption: tints the water vertex color towards deep blue and raises opacity with depth over the terrain. */
+static Int applyWaterDepth(Int diffuse, Real x, Real y, Real waterZ)
+{
+	if (!g_waterDepthAbsorb || !TheTerrainRenderObject)
+		return diffuse;
+	Real depth = waterZ - TheTerrainRenderObject->getHeightMapHeight(x, y, nullptr);
+	if (depth <= 0.0f)
+		return diffuse;
+	Real t = 1.0f - expf(-depth * (1.0f / 5.0f));	//0 at the shore, ~1 in deep water
+	Real r = (Real)((diffuse >> 16) & 0xff), g = (Real)((diffuse >> 8) & 0xff), b = (Real)(diffuse & 0xff);
+	Real a = (Real)((diffuse >> 24) & 0xff);
+	//bright turquoise in the shallows, deep navy in deep water
+	r *= 0.90f + (0.08f - 0.90f) * t;
+	g *= 1.10f + (0.30f - 1.10f) * t;
+	b *= 1.15f + (0.75f - 1.15f) * t;
+	a += (252.0f - a) * t * 0.9f;
+	if (r > 255) r = 255; if (g > 255) g = 255; if (b > 255) b = 255;
+	if (a < 0) a = 0; if (a > 255) a = 255;
+	return ((Int)a << 24) | ((Int)r << 16) | ((Int)g << 8) | (Int)b;
+}
 
 static Int getRiverVertexDiffuse(W3DShroud *shroud, Real x, Real y, Real shadeR, Real shadeG, Real shadeB, Int diffuse)
 {
@@ -275,7 +308,12 @@ void WaterRenderObjClass::setupJbaWaterShader()
 	m_pDev->SetTextureStageState( 2, D3DTSS_MAGFILTER, D3DTEXF_LINEAR );
 	m_pDev->SetTextureStageState( 3, D3DTSS_MINFILTER, D3DTEXF_LINEAR );
 	m_pDev->SetTextureStageState( 3, D3DTSS_MAGFILTER, D3DTEXF_LINEAR );
-	if (m_riverWaterPixelShader){
+	if (useModernShader() && m_modernRiverPS)
+	{
+		setupUpdatedWaterStages(m_curWaterZ);
+		DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(m_modernRiverPS);
+	}
+	else if (m_riverWaterPixelShader){
 		DX8Wrapper::_Get_D3D_Device8()->SetPixelShaderConstant(0,   D3DXVECTOR4(REFLECTION_FACTOR, REFLECTION_FACTOR, REFLECTION_FACTOR, 1.0f), 1);
 		DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(m_riverWaterPixelShader);
 	}
@@ -355,6 +393,21 @@ WaterRenderObjClass::WaterRenderObjClass()
 	m_vertexBufferD3DOffset=0;
 
 	m_dwWavePixelShader=0;
+	m_modernRiverPS=0;
+	m_modernTrapezoidPS=0;
+	m_modernFrameReady=FALSE;
+	m_sceneCapture=nullptr;
+	m_sceneCaptureW=m_sceneCaptureH=0;
+	m_depthMapTexture=nullptr;
+	m_depthMapSource=nullptr;
+	m_depthMapW=m_depthMapH=m_depthMapBorder=0;
+	m_depthMapMin=0.0f;
+	m_depthMapRange=1.0f;
+	m_curWaterZ=0.0f;
+	m_reflectionsEnabled=FALSE;
+	m_mirrorReady=FALSE;
+	m_mirrorZ=0.0f;
+	m_wakeCount=0;
 	m_dwWaveVertexShader=0;
 	m_meshData=nullptr;
 	m_meshDataSize = 0;
@@ -840,6 +893,8 @@ void WaterRenderObjClass::ReleaseResources()
 	if (m_riverWaterPixelShader)
 		m_pDev->DeletePixelShader(m_riverWaterPixelShader);
 
+	releaseUpdatedWaterResources();
+
 	m_dwWavePixelShader=0;
 	m_dwWaveVertexShader=0;
 	m_waterPixelShader = 0;
@@ -941,6 +996,23 @@ void WaterRenderObjClass::ReAcquireResources()
 			hr = 	DX8Wrapper::_Get_D3D_Device8()->CreatePixelShader((DWORD*)compiledShader->GetBufferPointer(), &m_riverWaterPixelShader);
 			compiledShader->Release();
 		}
+
+		// Updated ps_3_0 water (HLSL source in Water/Shaders/WaterModern.hlsl). Accepted by the patched Vulkan translation
+		// layer shipped with the x64 port; a real Direct3D 8 device or stock DXVK rejects it and the classic shaders keep running.
+		m_modernRiverPS = m_modernTrapezoidPS = 0;
+		{
+			OptionPreferences prefs;
+			if (prefs.getUpdatedWaterEnabled())
+			{
+				if (FAILED(DX8Wrapper::_Get_D3D_Device8()->CreatePixelShader((DWORD*)g_waterModernRiverPS, &m_modernRiverPS)))
+					m_modernRiverPS = 0;
+				if (FAILED(DX8Wrapper::_Get_D3D_Device8()->CreatePixelShader((DWORD*)g_waterModernTrapezoidPS, &m_modernTrapezoidPS)))
+					m_modernTrapezoidPS = 0;
+			}
+			// Without the updated shaders the classic ones get the depth tint baked into the vertex colors instead.
+			g_waterDepthAbsorb = prefs.getUpdatedWaterEnabled() && !(m_modernRiverPS && m_modernTrapezoidPS);
+			m_reflectionsEnabled = prefs.getWaterReflectionsEnabled();
+		}
 		shader =
 			"ps.1.1\n \
 			tex t0 \n\
@@ -995,6 +1067,8 @@ void WaterRenderObjClass::ReAcquireResources()
 
 void WaterRenderObjClass::load()
 {
+	m_depthMapSource = nullptr;	//a new map was loaded, rebuild the terrain height texture
+
 	if (m_waterTrackSystem)
 		m_waterTrackSystem->loadTracks();
 }
@@ -1437,9 +1511,39 @@ void WaterRenderObjClass::loadSetting( Setting *setting, TimeOfDay timeOfDay )
 //-------------------------------------------------------------------------------------------------
 void WaterRenderObjClass::updateRenderTargetTextures(CameraClass *cam)
 {
-	if (m_waterType == WATER_TYPE_2_PVSHADER && getClippedWaterPlane(cam, nullptr) &&
-		TheTerrainRenderObject && TheTerrainRenderObject->getMap())
-		renderMirror(cam);	//generate texture containing reflected scene
+	m_mirrorReady = FALSE;
+	if (m_waterType == WATER_TYPE_2_PVSHADER)
+	{
+		if (getClippedWaterPlane(cam, nullptr) && TheTerrainRenderObject && TheTerrainRenderObject->getMap())
+			renderMirror(cam);	//generate texture containing reflected scene
+		return;
+	}
+
+	// Updated water: mirror the scene at the height of the map's water polygons for the reflection in the surface shader.
+	if (wantsMirrorUpdate() && TheTerrainRenderObject && TheTerrainRenderObject->getMap() && findMirrorLevel(m_mirrorZ))
+	{
+		if (!m_pReflectionTexture)
+			m_pReflectionTexture = DX8Wrapper::Create_Render_Target(MODERN_REFLECTION_SIZE, MODERN_REFLECTION_SIZE);
+		if (m_pReflectionTexture)
+		{
+			renderMirror(cam);
+			m_mirrorReady = TRUE;
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool WaterRenderObjClass::findMirrorLevel(Real &z) const
+{
+	for (PolygonTrigger *pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext())
+	{
+		if (pTrig->isWaterArea() && pTrig->getNumPoints() > 2)
+		{
+			z = (Real)pTrig->getPoint(0)->z;
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1455,7 +1559,8 @@ void WaterRenderObjClass::renderMirror(CameraClass *cam)
 	Matrix3D	OldCameraMatrix=cam->Get_Transform();
 	Matrix4x4	FullMatrix4(cam->Get_Transform());	//copy 3x4 matrix into a 4x4
 	Vector3		WaterNormal(0,0,1);	//normal of plane used for reflection
-	Vector4		WaterPlane(WaterNormal.X,WaterNormal.Y,WaterNormal.Z,m_level);
+	const Bool	modernMirror = (m_waterType != WATER_TYPE_2_PVSHADER);
+	Vector4		WaterPlane(WaterNormal.X,WaterNormal.Y,WaterNormal.Z,modernMirror ? m_mirrorZ : m_level);
 	Vector3		rRight,rUp,rN,rPos;	//orientation and translation vectors of camera
 
 	Matrix4x4	FullMatrix(FullMatrix4.Transpose());	//swap rows/columns
@@ -1500,12 +1605,23 @@ void WaterRenderObjClass::renderMirror(CameraClass *cam)
 	//flip the winding order of polygons to draw the reflected back sides.
 	ShaderClass::Invert_Backface_Culling(true);
 
+	if (modernMirror)
+	{
+		// Everything below the water surface (the sea floor) must not show up in the reflection.
+		const float clipPlane[4] = { 0.0f, 0.0f, 1.0f, -(m_mirrorZ - 0.15f) };
+		DX8Wrapper::Set_DX8_Clip_Plane(0, clipPlane);
+		DX8Wrapper::Set_DX8_Render_State(D3DRS_CLIPPLANEENABLE, 1);
+	}
+
 	// Render the scene
 	renderSky();
 	if (m_tod == TIME_OF_DAY_NIGHT)
 		renderSkyBody(&reflectedTransform);
 
 	WW3D::Render(m_parentScene,cam);
+
+	if (modernMirror)
+		DX8Wrapper::Set_DX8_Render_State(D3DRS_CLIPPLANEENABLE, 0);
 
 	cam->Set_Transform(OldCameraMatrix);	//restore original non-reflected matrix
  	cam->Set_Viewport(vOldMin,vOldMax);
@@ -2013,6 +2129,8 @@ void WaterRenderObjClass::drawSea(RenderInfoClass & rinfo)
 //-------------------------------------------------------------------------------------------------
 void WaterRenderObjClass::renderWater()
 {
+	captureSceneForWater();	//updated water refracts the finished scene, so copy it before any water is drawn
+
 	for (PolygonTrigger *pTrig=PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
 		if (pTrig->isWaterArea()) {
 			if (pTrig->getNumPoints()>2) {
@@ -2400,7 +2518,12 @@ void WaterRenderObjClass::renderWaterMesh()
 
 	DX8Wrapper::Set_Shader(m_shaderClass);
 #if 1
-	setupFlatWaterShader();
+	{	// The deforming grid mesh keeps the classic shader: its heights are not the flat polygon heights the updated shader assumes.
+		const Bool modernFrame = m_modernFrameReady;
+		m_modernFrameReady = FALSE;
+		setupFlatWaterShader();
+		m_modernFrameReady = modernFrame;
+	}
 #else
 	//DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaqueShader);
 	DX8Wrapper::Set_Texture(0,setting->waterTexture);
@@ -2724,10 +2847,337 @@ Real WaterRenderObjClass::getWaterHeight(Real x, Real y)
 }
 
 //-------------------------------------------------------------------------------------------------
-//Draw a many sided river polygon.
+/** Updated water: frees the shaders, the back buffer copy and the terrain height texture. */
 //-------------------------------------------------------------------------------------------------
+void WaterRenderObjClass::releaseUpdatedWaterResources()
+{
+	REF_PTR_RELEASE(m_sceneCapture);
+	m_sceneCaptureW = m_sceneCaptureH = 0;
+	SAFE_RELEASE(m_depthMapTexture);
+	m_depthMapSource = nullptr;
+	if (m_modernRiverPS)
+		m_pDev->DeletePixelShader(m_modernRiverPS);
+	if (m_modernTrapezoidPS)
+		m_pDev->DeletePixelShader(m_modernTrapezoidPS);
+	m_modernRiverPS = m_modernTrapezoidPS = 0;
+	m_modernFrameReady = FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Updated water: builds a texture holding the terrain height of the whole map. The water shaders sample it in world space
+	* to know how deep the water is at every pixel. One texel per height map vertex, so it is as exact as the terrain itself. */
+//-------------------------------------------------------------------------------------------------
+void WaterRenderObjClass::ensureDepthMap()
+{
+	WorldHeightMap *map = TheTerrainRenderObject ? TheTerrainRenderObject->getMap() : nullptr;
+	if (!map)
+		return;
+
+	const Int w = map->getXExtent();
+	const Int h = map->getYExtent();
+	if (m_depthMapTexture && m_depthMapSource == map && m_depthMapW == w && m_depthMapH == h)
+		return;
+
+	SAFE_RELEASE(m_depthMapTexture);
+	m_depthMapSource = map;
+	m_depthMapW = w;
+	m_depthMapH = h;
+	m_depthMapBorder = map->getBorderSize();
+	// The height map stores one byte per vertex, so an 8 bit texture keeps every height exactly.
+	m_depthMapMin = 0.0f;
+	m_depthMapRange = 255.0f * MAP_HEIGHT_SCALE;
+
+	if (FAILED(m_pDev->CreateTexture(w, h, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &m_depthMapTexture)))
+	{
+		m_depthMapTexture = nullptr;
+		return;
+	}
+
+	D3DLOCKED_RECT lr;
+	if (FAILED(m_depthMapTexture->LockRect(0, &lr, nullptr, 0)))
+	{
+		SAFE_RELEASE(m_depthMapTexture);
+		return;
+	}
+	for (Int y = 0; y < h; ++y)
+	{
+		UnsignedByte *row = (UnsignedByte *)lr.pBits + y * lr.Pitch;
+		for (Int x = 0; x < w; ++x)
+			row[x] = map->getHeight(x, y);
+	}
+	m_depthMapTexture->UnlockRect(0);
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Updated water: finds the units that disturb the water surface, the ones closest to the view center. Ground units standing in
+	* water, hovercraft and boats make ripples; moving ones also leave a wake. Aircraft and structures are ignored. */
+//-------------------------------------------------------------------------------------------------
+void WaterRenderObjClass::gatherWakeObjects()
+{
+	m_wakeCount = 0;
+	Real waterZ;
+	if (!TheGameClient || !TheTacticalView || !TheTerrainRenderObject || !findMirrorLevel(waterZ))
+		return;
+
+	const Coord3D center = TheTacticalView->getPosition();
+
+	struct SmoothedWake { Bool valid; Real speed, dirX, dirY; SmoothedWake() : valid(FALSE), speed(0), dirX(1), dirY(0) {} };
+	static std::map<ObjectID, SmoothedWake> smooth;
+	static UnsignedInt lastTime = 0;
+	const UnsignedInt now = timeGetTime();
+	const Real dt = lastTime ? (Real)(now - lastTime) * 0.001f : 0.0f;
+	lastTime = now;
+	const Real blend = 1.0f - expf(-dt / 0.25f);
+
+	Real nearest[MAX_WAKES];
+	for (Drawable *draw = TheGameClient->firstDrawable(); draw; draw = draw->getNextDrawable())
+	{
+		Object *obj = draw->getObject();
+		if (!obj || draw->isDrawableEffectivelyHidden())
+			continue;
+		if (obj->isKindOf(KINDOF_STRUCTURE) || obj->isKindOf(KINDOF_AIRCRAFT))
+			continue;
+		if (!obj->isKindOf(KINDOF_VEHICLE) && !obj->isKindOf(KINDOF_INFANTRY) && !obj->isKindOf(KINDOF_BOAT))
+			continue;
+
+		const Coord3D *pos = draw->getPosition();	//the drawable is interpolated every frame, the object only moves 30 times a second
+		if (TheTerrainRenderObject->getHeightMapHeight(pos->x, pos->y, nullptr) > waterZ - 0.3f)
+			continue;	//no water under it
+
+		const Real dx = pos->x - center.x;
+		const Real dy = pos->y - center.y;
+		const Real distSq = dx * dx + dy * dy;
+
+		// keep the closest MAX_WAKES, sorted by distance
+		Int slot = m_wakeCount;
+		if (m_wakeCount == MAX_WAKES)
+		{
+			if (distSq >= nearest[MAX_WAKES - 1])
+				continue;
+			slot = MAX_WAKES - 1;
+		}
+		else
+			++m_wakeCount;
+		while (slot > 0 && nearest[slot - 1] > distSq)
+		{
+			nearest[slot] = nearest[slot - 1];
+			m_wake[slot] = m_wake[slot - 1];
+			--slot;
+		}
+		nearest[slot] = distSq;
+
+		// Speed and heading of a hovering or steering unit jump from logic frame to logic frame; smooth them over a quarter
+		// of a second per object so the wake does not flicker.
+		const PhysicsBehavior *physics = obj->getPhysics();
+		const Real angle = draw->getOrientation();
+		const Real rawSpeed = physics ? physics->getVelocityMagnitude() * (Real)LOGICFRAMES_PER_SECOND : 0.0f;
+		if (smooth.size() > 512)
+			smooth.clear();
+		SmoothedWake &sm = smooth[obj->getID()];
+		if (!sm.valid)
+		{
+			sm.valid = TRUE;
+			sm.speed = rawSpeed;
+			sm.dirX = cosf(angle);
+			sm.dirY = sinf(angle);
+		}
+		else
+		{
+			sm.speed += (rawSpeed - sm.speed) * blend;
+			sm.dirX += (cosf(angle) - sm.dirX) * blend;
+			sm.dirY += (sinf(angle) - sm.dirY) * blend;
+		}
+		Real dirLen = sqrtf(sm.dirX * sm.dirX + sm.dirY * sm.dirY);
+		if (dirLen < 0.001f)
+			dirLen = 1.0f;
+
+		WakeObject &w = m_wake[slot];
+		w.x = pos->x;
+		w.y = pos->y;
+		w.radius = min(obj->getGeometryInfo().getBoundingCircleRadius(), 60.0f);
+		w.speed = sm.speed;
+		w.dirX = sm.dirX / dirLen;
+		w.dirY = sm.dirY / dirLen;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Updated water: copies the back buffer, which at this point holds the whole opaque scene, so the water shader can
+	* refract it. Done once per frame before the first water polygon is drawn. */
+//-------------------------------------------------------------------------------------------------
+void WaterRenderObjClass::captureSceneForWater()
+{
+	m_modernFrameReady = FALSE;
+	if (!m_modernRiverPS || !m_modernTrapezoidPS)
+		return;
+
+	gatherWakeObjects();
+	ensureDepthMap();
+	if (!m_depthMapTexture)
+		return;
+
+	SurfaceClass *backBuffer = DX8Wrapper::_Get_DX8_Back_Buffer();
+	if (!backBuffer)
+		return;
+
+	SurfaceClass::SurfaceDescription desc;
+	backBuffer->Get_Description(desc);
+
+	if (!m_sceneCapture || m_sceneCaptureW != desc.Width || m_sceneCaptureH != desc.Height)
+	{
+		REF_PTR_RELEASE(m_sceneCapture);
+		m_sceneCapture = MSGNEW("TextureClass") TextureClass(desc.Width, desc.Height, desc.Format, MIP_LEVELS_1, TextureClass::POOL_DEFAULT, true);
+		m_sceneCaptureW = desc.Width;
+		m_sceneCaptureH = desc.Height;
+	}
+
+	if (m_sceneCapture)
+	{
+		SurfaceClass *dst = m_sceneCapture->Get_Surface_Level();
+		if (dst)
+		{
+			dst->Copy(0, 0, 0, 0, desc.Width, desc.Height, backBuffer);
+			REF_PTR_RELEASE(dst);
+			m_modernFrameReady = TRUE;
+		}
+	}
+	REF_PTR_RELEASE(backBuffer);
+}
+
+//-------------------------------------------------------------------------------------------------
+void WaterRenderObjClass::cleanupUpdatedWaterStages()
+{
+	if (!useModernShader())
+		return;
+
+	LPDIRECT3DDEVICE8 dev = DX8Wrapper::_Get_D3D_Device8();
+	dev->SetTexture(4, nullptr);
+	dev->SetTexture(5, nullptr);
+	dev->SetTexture(6, nullptr);
+	for (Int stage = 4; stage <= 6; ++stage)
+	{
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_TEXCOORDINDEX, stage);
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Updated water: binds the scene copy (stage 4) and the terrain height texture (stage 5), the transforms that turn
+	* camera space positions into screen and height map coordinates, and the shader constants. */
+//-------------------------------------------------------------------------------------------------
+void WaterRenderObjClass::setupUpdatedWaterStages(Real waterZ)
+{
+	LPDIRECT3DDEVICE8 dev = DX8Wrapper::_Get_D3D_Device8();
+
+	D3DXMATRIX view, proj, inv;
+	DX8Wrapper::_Get_DX8_Transform(D3DTS_VIEW, view);
+	DX8Wrapper::_Get_DX8_Transform(D3DTS_PROJECTION, proj);
+	float det;
+	D3DXMatrixInverse(&inv, &det, &view);
+
+	// stage 4: camera space position -> projected position -> back buffer uv (the shader divides by w)
+	D3DXMATRIX bias;
+	memset(&bias, 0, sizeof(bias));
+	bias._11 = 0.5f;  bias._22 = -0.5f;  bias._33 = 1.0f;  bias._44 = 1.0f;
+	bias._41 = 0.5f;  bias._42 = 0.5f;
+	D3DXMATRIX screenMatrix = proj * bias;
+	DX8Wrapper::_Set_DX8_Transform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + 4), screenMatrix);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(4, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(4, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT4);
+
+	// stage 5: camera space position -> world position -> height map uv
+	const Real mapSizeX = (Real)m_depthMapW * MAP_XY_FACTOR;
+	const Real mapSizeY = (Real)m_depthMapH * MAP_XY_FACTOR;
+	const Real originX = ((Real)m_depthMapBorder + 0.5f) * MAP_XY_FACTOR;
+	const Real originY = ((Real)m_depthMapBorder + 0.5f) * MAP_XY_FACTOR;
+	D3DXMATRIX toMap;
+	memset(&toMap, 0, sizeof(toMap));
+	toMap._11 = 1.0f / mapSizeX;  toMap._22 = 1.0f / mapSizeY;  toMap._33 = 1.0f;  toMap._44 = 1.0f;
+	toMap._41 = originX / mapSizeX;  toMap._42 = originY / mapSizeY;
+	D3DXMATRIX depthMatrix = inv * toMap;
+	DX8Wrapper::_Set_DX8_Transform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + 5), depthMatrix);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(5, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(5, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT2);
+
+	// stage 6: the raw camera space position, for the view vector
+	D3DXMATRIX identity;
+	D3DXMatrixIdentity(&identity);
+	DX8Wrapper::_Set_DX8_Transform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + 6), identity);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(6, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(6, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
+
+	dev->SetTexture(4, m_sceneCapture->Peek_D3D_Texture());
+	dev->SetTexture(5, m_depthMapTexture);
+	// stage 6 also carries the mirrored scene; without one the shader falls back to a sky color
+	const Bool haveMirror = m_mirrorReady && m_pReflectionTexture;
+	dev->SetTexture(6, haveMirror ? m_pReflectionTexture->Peek_D3D_Texture() : m_sceneCapture->Peek_D3D_Texture());
+	for (Int stage = 4; stage <= 6; ++stage)
+	{
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_MIPFILTER, D3DTEXF_NONE);
+	}
+	DX8Wrapper::Set_DX8_Texture_Stage_State(2, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(2, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
+
+	// sun direction in the world, towards the sun
+	Vector3 sun(0.45f, 0.45f, 0.77f);
+	if (TheGlobalData)
+	{
+		const Coord3D &l = TheGlobalData->m_terrainLightPos[0];
+		Vector3 s(-l.x, -l.y, -l.z);
+		if (s.Length() > 0.001f)
+		{
+			s.Normalize();
+			if (s.Z > 0.2f)
+				sun = s;
+		}
+	}
+
+	D3DVIEWPORT8 vp;
+	dev->GetViewport(&vp);
+	const Real tw = (Real)m_sceneCaptureW;
+	const Real th = (Real)m_sceneCaptureH;
+	const Real baseAlpha = (Real)((m_settings[m_tod].waterDiffuse >> 24) & 0xff) / 255.0f;
+	const Real time = (Real)(timeGetTime() & 0xFFFFFF) * 0.001f;
+
+	// x = refraction strength, y = foam strength, z = reflection strength, w = wave amplitude
+	dev->SetPixelShaderConstant(1, D3DXVECTOR4(0.060f, 1.0f, 0.85f, 1.8f), 1);
+	// x = vertex alpha without shroud, y = glint strength, z = glint sharpness
+	dev->SetPixelShaderConstant(2, D3DXVECTOR4(baseAlpha, 1.3f, 60.0f, 6.0f), 1);
+	dev->SetPixelShaderConstant(3, D3DXVECTOR4(waterZ, time, mapSizeX, mapSizeY), 1);
+	dev->SetPixelShaderConstant(4, D3DXVECTOR4(m_depthMapMin, m_depthMapRange, originX, originY), 1);
+	dev->SetPixelShaderConstant(5, D3DXVECTOR4((Real)vp.Width / tw, (Real)vp.Height / th, (Real)vp.X / tw, (Real)vp.Y / th), 1);
+	dev->SetPixelShaderConstant(6, D3DXVECTOR4(haveMirror ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f), 1);
+	dev->SetPixelShaderConstant(8, D3DXVECTOR4(view._11, view._12, view._13, 0.0f), 1);
+	dev->SetPixelShaderConstant(9, D3DXVECTOR4(view._21, view._22, view._23, 0.0f), 1);
+	dev->SetPixelShaderConstant(10, D3DXVECTOR4(view._31, view._32, view._33, 0.0f), 1);
+	dev->SetPixelShaderConstant(11, D3DXVECTOR4(sun.X, sun.Y, sun.Z, 0.0f), 1);
+
+	// units disturbing the surface: c12..c17 position/radius/speed, c18..c23 heading/used
+	for (Int i = 0; i < MAX_WAKES; ++i)
+	{
+		if (i < m_wakeCount)
+		{
+			const WakeObject &w = m_wake[i];
+			dev->SetPixelShaderConstant(12 + i, D3DXVECTOR4(w.x, w.y, w.radius, w.speed), 1);
+			dev->SetPixelShaderConstant(18 + i, D3DXVECTOR4(w.dirX, w.dirY, 1.0f, 0.0f), 1);
+		}
+		else
+		{
+			dev->SetPixelShaderConstant(12 + i, D3DXVECTOR4(0.0f, 0.0f, 0.0f, 0.0f), 1);
+			dev->SetPixelShaderConstant(18 + i, D3DXVECTOR4(1.0f, 0.0f, 0.0f, 0.0f), 1);
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+//Draw a many sided river polygon.
 void WaterRenderObjClass::drawRiverWater(PolygonTrigger *pTrig)
 {
+	m_curWaterZ = (Real)pTrig->getPoint(0)->z;
 	DX8Wrapper::Invalidate_Cached_Render_States();	///@todo: Figure out why rivers don't draw without reset of all states.
 
 	Int rectangleCount = pTrig->getNumPoints()/2;
@@ -2870,7 +3320,7 @@ void WaterRenderObjClass::drawRiverWater(PolygonTrigger *pTrig)
 
 			vb->z=innerPt.z;
 
-			vb->diffuse = getRiverVertexDiffuse(shroud, x, y, shadeR, shadeG, shadeB, diffuse);
+			vb->diffuse = getRiverVertexDiffuse(shroud, x, y, shadeR, shadeG, shadeB, applyWaterDepth(diffuse, x, y, vb->z));
 
 			Real wobbleConst=-m_riverVOrigin+vScale*(Real)i + WWMath::Fast_Sin(2*PI*(vScale*(Real)i) - constA)/22.0f;
  			//old slower version
@@ -2893,7 +3343,7 @@ void WaterRenderObjClass::drawRiverWater(PolygonTrigger *pTrig)
 			vb->y=y;
 			vb->z=outerPt.z;
 
-			vb->diffuse = getRiverVertexDiffuse(shroud, x, y, shadeR, shadeG, shadeB, diffuse);
+			vb->diffuse = getRiverVertexDiffuse(shroud, x, y, shadeR, shadeG, shadeB, applyWaterDepth(diffuse, x, y, vb->z));
  			//old slower version
 			//vb->v1=-m_riverVOrigin+vScale*(Real)i + wobble(vScale*i, m_riverVOrigin, doWobble);
 			vb->v1=wobbleConst;
@@ -2924,7 +3374,10 @@ void WaterRenderObjClass::drawRiverWater(PolygonTrigger *pTrig)
 	if (TheWaterTransparency->m_additiveBlend)
 		DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA );
 
-	if (m_riverWaterPixelShader) DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(m_riverWaterPixelShader);
+	if (useModernShader() && m_modernRiverPS)
+		DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(m_modernRiverPS);
+	else if (m_riverWaterPixelShader)
+		DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(m_riverWaterPixelShader);
  	DWORD cull;
 	DX8Wrapper::_Get_D3D_Device8()->GetRenderState(D3DRS_CULLMODE, &cull);
 	DX8Wrapper::_Get_D3D_Device8()->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
@@ -2940,6 +3393,7 @@ void WaterRenderObjClass::drawRiverWater(PolygonTrigger *pTrig)
 	}
 
 	if (m_riverWaterPixelShader) DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(0);
+	cleanupUpdatedWaterStages();
 
 	//restore blend mode to what W3D expects.
 	if (TheWaterTransparency->m_additiveBlend)
@@ -3043,7 +3497,12 @@ void WaterRenderObjClass::setupFlatWaterShader()
 	m_pDev->SetTextureStageState( 1, D3DTSS_MAGFILTER, D3DTEXF_LINEAR );
 	m_pDev->SetTextureStageState( 2, D3DTSS_MINFILTER, D3DTEXF_LINEAR );
 	m_pDev->SetTextureStageState( 2, D3DTSS_MAGFILTER, D3DTEXF_LINEAR );
-	if (m_trapezoidWaterPixelShader){
+	if (useModernShader() && m_modernTrapezoidPS && m_trapezoidWaterPixelShader)
+	{
+		setupUpdatedWaterStages(m_curWaterZ);
+		DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(m_modernTrapezoidPS);
+	}
+	else if (m_trapezoidWaterPixelShader){
 		DX8Wrapper::_Get_D3D_Device8()->SetPixelShaderConstant(0,   D3DXVECTOR4(REFLECTION_FACTOR, REFLECTION_FACTOR, REFLECTION_FACTOR, 1.0f), 1);
 		DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(m_trapezoidWaterPixelShader);
 	}
@@ -3054,6 +3513,7 @@ void WaterRenderObjClass::setupFlatWaterShader()
 //-------------------------------------------------------------------------------------------------
 void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 {
+	m_curWaterZ = points[3].Z;
 	Vector3 origin(points[0]);
 	Vector3 uVec1(points[1]);
 	Vector3 vVec1(points[3]);
@@ -3208,7 +3668,7 @@ void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 				wave = (sin(phase) - 1.0f) * amplitude;
 
 				vb->z = (vertex.Z + wave);
-				vb->diffuse = customDiffuse;
+				vb->diffuse = applyWaterDepth(customDiffuse, vertex.X, vertex.Y, vertex.Z);
 				vb->u1 = (vertex.X/waterFactor) + 0.02*cos(11*m_riverVOrigin)*wave;
 				vb->v1 = (vertex.Y/waterFactor) + 0.02*cos(5*m_riverVOrigin)*wave;
 				vb->u2 = vertex.X/BUMP_SIZE;
@@ -3252,7 +3712,7 @@ void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 				vb->y=vertex.Y;
 				vb->z=vertex.Z;
 
-				vb->diffuse= diffuse;
+				vb->diffuse= applyWaterDepth(diffuse, vertex.X, vertex.Y, vertex.Z);
 				//Old slower version
  				//vb->u1=(vertex.X/waterFactor) + 0.02*cos(11*m_riverVOrigin)*sin(25*m_riverVOrigin+vertex.X*PI/(4*MAP_XY_FACTOR));
  				//vb->v1=(vertex.Y/waterFactor) + 0.02*cos(5*m_riverVOrigin)*sin(25*m_riverVOrigin+vertex.Y*PI/(4*MAP_XY_FACTOR));
@@ -3329,6 +3789,7 @@ void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 	}
 
 	if (m_riverWaterPixelShader) DX8Wrapper::_Get_D3D_Device8()->SetPixelShader(0);
+	cleanupUpdatedWaterStages();
 	//Restore alpha blend to default values since we may have changed them to feather edges.
 	if (!TheWaterTransparency->m_additiveBlend)
 	{	DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA );

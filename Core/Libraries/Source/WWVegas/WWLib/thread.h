@@ -91,6 +91,6 @@ protected:
 
 private:
 	static void __cdecl Internal_Thread_Function(void*);
-	volatile unsigned long handle;
+	volatile uintptr_t handle; // holds the _beginthread handle, which is pointer sized
 	int thread_priority;
 };

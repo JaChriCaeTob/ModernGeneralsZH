@@ -398,6 +398,9 @@ void GameLODManager::init()
 		}
 	}
 
+	// The frame rate cap is a display setting, not part of the graphics preset: honor it for every preset.
+	TheWritableGlobalData->m_useFpsLimit = optionPref.getFPSLimitEnabled();
+
 	if (userSetDetail == STATIC_GAME_LOD_CUSTOM)
 	{
 		TheWritableGlobalData->m_textureReductionFactor = optionPref.getTextureReduction();
@@ -638,7 +641,10 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_useDrawModuleLOD=!lodInfo->m_useBuildupScaffolds;
 		TheWritableGlobalData->m_useHeatEffects=lodInfo->m_useHeatEffects;
 		TheWritableGlobalData->m_enableDynamicLOD = lodInfo->m_enableDynamicLOD;
-		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
+		{
+			OptionPreferences optionPref;
+			TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit && !optionPref.isFPSLimitDisabledByUser();
+		}
 		TheWritableGlobalData->m_useTrees = requestedTrees;
 
 		if (!m_memPassed || isReallyLowMHz()) {

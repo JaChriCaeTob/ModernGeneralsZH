@@ -31,6 +31,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "GameClient/FXList.h"
+#include "GameClient/Shockwave.h"
 
 #include "Common/DrawModule.h"
 #include "Common/GameAudio.h"
@@ -391,6 +392,7 @@ public:
 		{
 			if (TheTacticalView)
 				TheTacticalView->shake(primary, m_shake);
+			TheShockwaves.spawnFromShake(*primary, m_shake);
 		}
 		else
 		{
@@ -455,6 +457,8 @@ public:
 				scorch = GameClientRandomValue( SCORCH_1, SCORCH_4 );
 			}
 			TheGameClient->addScorch(primary, m_radius, (Scorches)scorch);
+			if (m_radius >= 20.0f)
+				TheShockwaves.spawn(*primary, m_radius * 3.0f, 0.55f);
 		}
 		else
 		{

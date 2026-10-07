@@ -31,6 +31,19 @@
 #include <windows.h>
 #include <commctrl.h>
 
+#ifdef _WIN64
+// The x86 register names map onto their 64-bit counterparts in CONTEXT.
+#define Eax Rax
+#define Ebx Rbx
+#define Ecx Rcx
+#define Edx Rdx
+#define Esi Rsi
+#define Edi Rdi
+#define Eip Rip
+#define Esp Rsp
+#define Ebp Rbp
+#endif
+
 DebugExceptionhandler::DebugExceptionhandler()
 {
   // don't do anything here!
@@ -148,6 +161,10 @@ void DebugExceptionhandler::LogFPURegisters(Debug &dbg, struct _EXCEPTION_POINTE
     return;
   }
 
+#ifdef _WIN64
+  dbg << "x87 register dump not available on x64";
+  return;
+#else
   FLOATING_SAVE_AREA &flt=ctx.FloatSave;
   dbg << Debug::Bin() << Debug::FillChar('0')
       << "CW:" << Debug::Width(16) << (flt.ControlWord&0xffff) << "\n"
@@ -181,6 +198,7 @@ void DebugExceptionhandler::LogFPURegisters(Debug &dbg, struct _EXCEPTION_POINTE
     dbg << "\n";
   }
   dbg << Debug::FillChar() << Debug::Dec();
+#endif // _WIN64
 }
 
 // include exception dialog box
@@ -195,7 +213,7 @@ static char regInfo[1024],verInfo[256];
 // and this saves us from doing a stack walk twice
 static DebugStackwalk::Signature sig;
 
-static BOOL CALLBACK ExceptionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+static INT_PTR CALLBACK ExceptionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
   switch(uMsg)
   {

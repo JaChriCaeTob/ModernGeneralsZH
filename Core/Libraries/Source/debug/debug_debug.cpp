@@ -33,6 +33,7 @@
 #include "internal_io.h"
 #include <stdlib.h>
 #include <windows.h>
+#include <intrin.h>
 #include <WWLib/WWCommon.h>
 #include <new>      // needed for placement new prototype
 
@@ -306,7 +307,9 @@ bool Debug::SkipNext()
   // do not implement this function inline, we do need
   // a valid frame pointer here!
   unsigned help;
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && defined(_WIN64)
+  help = (unsigned)(uintptr_t)_ReturnAddress();
+#elif defined(_MSC_VER)
   _asm
   {
     mov eax,[ebp+4]   // return address
@@ -435,7 +438,7 @@ bool Debug::AssertDone()
           break;
         case IDRETRY:
 #if defined(_MSC_VER)
-          _asm int 0x03
+          __debugbreak();
 #elif defined(__GNUC__)
           __builtin_trap();
 #else
@@ -709,7 +712,7 @@ bool Debug::CrashDone(bool die)
             break;
           case IDRETRY:
 #if defined(_MSC_VER)
-            _asm int 0x03
+            __debugbreak();
 #elif defined(__GNUC__)
             __builtin_trap();
 #else

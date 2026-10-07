@@ -39,7 +39,7 @@ Bool  getStringFromRegistry(HKEY root, AsciiString path, AsciiString key, AsciiS
 	unsigned long type;
 	int returnValue;
 
-	if ((returnValue = RegOpenKeyEx( root, path.str(), 0, KEY_READ, &handle )) == ERROR_SUCCESS)
+	if ((returnValue = RegOpenKeyEx( root, path.str(), 0, KEY_READ | KEY_WOW64_32KEY, &handle )) == ERROR_SUCCESS)
 	{
 		returnValue = RegQueryValueEx(handle, key.str(), nullptr, &type, (unsigned char *) &buffer, &size);
 		RegCloseKey( handle );
@@ -62,7 +62,7 @@ Bool getUnsignedIntFromRegistry(HKEY root, AsciiString path, AsciiString key, Un
 	unsigned long type;
 	int returnValue;
 
-	if ((returnValue = RegOpenKeyEx( root, path.str(), 0, KEY_READ, &handle )) == ERROR_SUCCESS)
+	if ((returnValue = RegOpenKeyEx( root, path.str(), 0, KEY_READ | KEY_WOW64_32KEY, &handle )) == ERROR_SUCCESS)
 	{
 		returnValue = RegQueryValueEx(handle, key.str(), nullptr, &type, (unsigned char *) &buffer, &size);
 		RegCloseKey( handle );
@@ -85,7 +85,7 @@ Bool setStringInRegistry( HKEY root, AsciiString path, AsciiString key, AsciiStr
 	int size;
 	char lpClass[] = "REG_NONE";
 
-	if ((returnValue = RegCreateKeyEx( root, path.str(), 0, lpClass, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &handle, nullptr )) == ERROR_SUCCESS)
+	if ((returnValue = RegCreateKeyEx( root, path.str(), 0, lpClass, REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_WOW64_32KEY, nullptr, &handle, nullptr )) == ERROR_SUCCESS)
 	{
 		type = REG_SZ;
 		size = val.getLength()+1;
@@ -104,7 +104,7 @@ Bool setUnsignedIntInRegistry( HKEY root, AsciiString path, AsciiString key, Uns
 	int size;
 	char lpClass[] = "REG_NONE";
 
-	if ((returnValue = RegCreateKeyEx( root, path.str(), 0, lpClass, REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &handle, nullptr )) == ERROR_SUCCESS)
+	if ((returnValue = RegCreateKeyEx( root, path.str(), 0, lpClass, REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_WOW64_32KEY, nullptr, &handle, nullptr )) == ERROR_SUCCESS)
 	{
 		type = REG_DWORD;
 		size = 4;
