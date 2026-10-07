@@ -691,15 +691,17 @@ Bool OptionPreferences::getShockwavesEnabled()
 
 Bool OptionPreferences::isFPSLimitDisabledByUser()
 {
+	// No FPSLimit key at all (fresh install) counts as "no limit" too: this build draws as fast as it can by default.
+	// The game logic always stays at its own fixed rate, only the rendering is uncapped.
 	OptionPreferences::const_iterator it = find("FPSLimit");
-	return it != end() && stricmp(it->second.str(), "no") == 0;
+	return it == end() || stricmp(it->second.str(), "no") == 0;
 }
 
 Bool OptionPreferences::getFPSLimitEnabled()
 {
 	OptionPreferences::const_iterator it = find("FPSLimit");
 	if (it == end())
-		return TheGlobalData->m_useFpsLimit;
+		return FALSE;	// unlimited by default, add "FPSLimit = yes" to Options.ini for the original 30 fps cap
 
 	if (stricmp(it->second.str(), "yes") == 0) {
 		return TRUE;

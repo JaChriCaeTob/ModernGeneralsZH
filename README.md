@@ -69,7 +69,7 @@ Short version; every item is described properly in
 |---|---|
 | 64-bit | Zero Hour builds as x64 (`scripts/build-x64.ps1`). Replacements for the 32-bit-only pieces: a DirectX 8 helper library (`d3dx8`), the Miles sound system (`mss32`) and the Bink video player. |
 | Graphics API | Runs on DXVK (Vulkan). The x64 launcher uses a **lightly patched DXVK** (one condition removed) so a pixel shader above model 1.x is accepted on a Direct3D 8 device. |
-| Frame rate | Rendering is no longer tied to the 30 Hz game logic. With `FPSLimit = no` the picture is drawn as fast as the GPU allows while the simulation stays at 30 Hz. |
+| Frame rate | Rendering is no longer tied to the 30 Hz game logic. By default the picture is drawn as fast as the GPU allows while the simulation stays at 30 Hz (`FPSLimit = yes` restores the 30 fps cap). |
 | Water | Updated water shaders: depth from the terrain, refraction, new wave shapes, reflections, foam, ripples and wakes around units on the water. Falls back to the original water if the shaders cannot be created. |
 | Explosions | A screen-space shockwave ring on explosions that shake the camera or scorch the ground. |
 | Content filter | A `-uncensored` command line flag that makes the game ignore localized (e.g. German) model/texture overrides when a base version exists. No assets are included. |
@@ -200,7 +200,7 @@ The game rewrites this file when it exits, so edit it while the game is closed.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `FPSLimit` | game default (limit on) | `no` = draw as fast as possible; game logic stays at 30 Hz. `FPSLimit = no` is now respected when a game starts (it used to be overridden). |
+| `FPSLimit` | `no` (unlimited) | `yes` = the original 30 fps cap. Without this key, or with `no`, the picture is drawn as fast as possible while the game logic stays at 30 Hz. An explicit `no` is also respected when a game starts (it used to be overridden). |
 | `UpdatedWater` | `yes` | `no` = original water rendering. Also used automatically when the updated shaders cannot be created. |
 | `WaterReflections` | `yes` | `no` = skip the extra mirrored render of the scene that the water reflection needs. |
 | `Shockwaves` | `yes` | `no` = no shockwave ring on explosions. |
@@ -216,8 +216,9 @@ German install. Do not expect it to change anything on an install that has no su
 
 ### Frame rate
 
-By default the game limits itself to 30 fps like the original, so on a fresh install (or after the game rewrote an old `Options.ini`) you will see 30. Add the line `FPSLimit = no` to `Options.ini` while the game is closed for uncapped rendering. Game logic
-(unit movement, AI, timers) stays at 30 Hz, so game speed does not change; only drawing and camera movement get smoother.
+Rendering is unlimited by default in this build, also on a fresh install without any `FPSLimit` line in `Options.ini`.
+Game logic (unit movement, AI, timers) stays at its fixed 30 Hz, so game speed does not change; only drawing and camera
+movement get smoother. To get the original 30 fps cap back add `FPSLimit = yes` to `Options.ini` while the game is closed.
 On the author's machine the in-game counter showed roughly 450-1000 fps on the shell map and an empty skirmish map.
 
 ## Detailed description of every change
@@ -242,7 +243,7 @@ On the author's machine the in-game counter showed roughly 450-1000 fps on the s
 
 - `FramePacer`: when the render cap is off the logic now keeps its own 30 Hz instead of speeding up with the render rate.
 - `GameLogicDispatch.cpp` and `GameLOD.cpp` previously switched the 30 fps limit back on when a game started or when a detail
-  preset was applied. They now check whether `Options.ini` explicitly says `FPSLimit = no` (`OptionPreferences::isFPSLimitDisabledByUser`)
+  preset was applied. They now check whether the limit is off, which is the default and also what `FPSLimit = no` in `Options.ini` says (`OptionPreferences::isFPSLimitDisabledByUser`)
   and leave the cap off in that case. `GameLOD.cpp` also applies the option at start-up.
 - The in-game options menu and skirmish start code needed only the pointer-size fixes listed above.
 
@@ -321,7 +322,7 @@ These are notes from the author's own experience, not a help desk. No troublesho
 | Magenta/missing textures | An old build without the DDS header fix, or damaged game archives. |
 | No cursor | The game was not started with `-useCwd`. Use the launchers. |
 | No videos | Built without `-Video`, or the FFmpeg DLLs are not in the `x64` folder. |
-| Stuck at 30 fps | `Options.ini` has no `FPSLimit = no`, or the file was rewritten while you edited it. Close the game, edit, start again. |
+| Stuck at 30 fps | `Options.ini` contains `FPSLimit = yes`. Remove the line or set it to `no` while the game is closed. |
 | Water looks like the original | `UpdatedWater = no`, or the patched `d3d8.dll`/`d3d9.dll` are not the ones next to the exe. Set `DXVK_LOG_LEVEL=debug` and `DXVK_LOG_PATH=<folder>` and look for `Unsupported PS version`. |
 | Language/path empty after reinstalling | The game is registered in a registry location the lookup does not know. Check the `WOW6432Node` entry of the EA/Generals key. |
 

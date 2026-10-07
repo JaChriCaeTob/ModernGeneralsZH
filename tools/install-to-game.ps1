@@ -51,4 +51,4 @@ Set-Content (Join-Path $GameDir "Play-x64.bat") ($common + "`r`n`"%~dp0x64\gener
 Set-Content (Join-Path $GameDir "Play-x64-Fullscreen.bat") ($common + "`r`n`"%~dp0x64\generalszh64.exe`" -useCwd$modArg %*`r`n") -Encoding ASCII
 
 Write-Host "Installed to $x64. Start the game with Play-x64.bat (windowed) or Play-x64-Fullscreen.bat."
-Write-Host "Set the resolution in the in-game options or in Options.ini (see README). Add FPSLimit = no to Options.ini to uncap rendering."
+Write-Host "Set the resolution in the in-game options or in Options.ini (see README). Rendering is uncapped by default; FPSLimit = yes in Options.ini restores the 30 fps cap."
