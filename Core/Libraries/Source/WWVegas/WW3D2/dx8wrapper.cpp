@@ -354,7 +354,10 @@ void DX8Wrapper::Shutdown()
 	}
 
 	if (D3D8Lib) {
-		FreeLibrary(D3D8Lib);
+		// Do not FreeLibrary(D3D8.DLL): objects created from it (for example the textures that the particle system manager
+		// still owns when it shuts down after the display) are released later, and with a Direct3D 8 translation layer
+		// such as DXVK the library really unloads, leaving those objects with a vtable in unmapped memory (crash on exit).
+		// The process is about to end anyway; a repeated Init() simply takes another reference.
 		D3D8Lib = nullptr;
 	}
 

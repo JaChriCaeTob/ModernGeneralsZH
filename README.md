@@ -129,8 +129,11 @@ All commands in PowerShell, from the repository root.
 git clone <this repository> GeneralsZH-x64
 cd GeneralsZH-x64
 
-# 2. point the build at your vcpkg checkout (FFmpeg is built through it)
-$env:VCPKG_ROOT = "C:\path\to\vcpkg"
+# 2. get vcpkg if you do not have it (FFmpeg is built through it), and point the build at it.
+#    Skip the first two lines if you already have a vcpkg checkout.
+git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+$env:VCPKG_ROOT = "C:\vcpkg"      # must be set in every new PowerShell window before step 3
 
 # 3. build the game (first run takes a while: FFmpeg is compiled by vcpkg)
 powershell -File scripts\build-x64.ps1 -Video
@@ -213,7 +216,7 @@ German install. Do not expect it to change anything on an install that has no su
 
 ### Frame rate
 
-By default the game limits itself to 30 fps like the original. Set `FPSLimit = no` for uncapped rendering. Game logic
+By default the game limits itself to 30 fps like the original, so on a fresh install (or after the game rewrote an old `Options.ini`) you will see 30. Add the line `FPSLimit = no` to `Options.ini` while the game is closed for uncapped rendering. Game logic
 (unit movement, AI, timers) stays at 30 Hz, so game speed does not change; only drawing and camera movement get smoother.
 On the author's machine the in-game counter showed roughly 450-1000 fps on the shell map and an empty skirmish map.
 
@@ -232,6 +235,7 @@ On the author's machine the in-game counter showed roughly 450-1000 fps on the s
 | Registry lookups | `registry.cpp`/`registry.h` (several) | Installs registered by the 32-bit EA App live under `WOW6432Node`; the x64 build reads that view (`KEY_WOW64_32KEY`) so language and install path are found. |
 | GUI message data | `GameWindow.h` | `WindowMsgData` is pointer sized because the GUI passes pointers through it. |
 | Pointer-size cleanups | ~40 small edits (`thread.h`, `SoundSceneObj.h`, `PartitionManager.cpp`, `IMEManager.cpp`, `GadgetListBox.cpp`, `LocalFile.cpp`, `persistfactory.h`, `huffencode.cpp`, `surfaceclass.cpp`, INI parsers, menu callbacks, ...) | Mostly `(Int)pointer` casts replaced with `(intptr_t)`/`(uintptr_t)` so values are not truncated on x64. These silence compiler warnings and remove actual truncation bugs. Some warnings remain, see [limitations](#known-problems-and-limitations). |
+| Shutdown crashes | `dx8wrapper.cpp` (`DX8Wrapper::Shutdown`), `WinMain.cpp` | Two crashes on quitting the game, found by a clean-install test. (1) `d3d8.dll` was unloaded before the particle system released its textures; with a translation layer such as DXVK the library really unloads and the textures were left pointing into unmapped memory, so the library is no longer freed. (2) On x64 the C runtime ran the static destructors of the memory pools after the memory manager was already gone; the process now exits directly after the game's own shutdown. |
 | Crash/stack code | `Except.cpp`, `debug_except.cpp`, `debug_stack.cpp`, `StackDump.*` | The register/stack dump code is x86-only. On x64 it records only the exception code and address. |
 
 ### 2. Frame pacing

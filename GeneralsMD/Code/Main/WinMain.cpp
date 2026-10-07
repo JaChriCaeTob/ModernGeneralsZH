@@ -945,6 +945,13 @@ Int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	TheDmaCriticalSection = nullptr;
 	TheMemoryPoolCriticalSection = nullptr;
 
+#ifdef _WIN64
+	// The game has shut everything down by now, including the memory manager. The C runtime would still run the static
+	// destructors of the pool allocators (AutoPoolClass<...>::Allocator), which walk memory that no longer exists and crash
+	// on x64. The process is ending anyway, so leave without running them.
+	ExitProcess((UINT)exitcode);
+#endif
+
 	return exitcode;
 
 }
