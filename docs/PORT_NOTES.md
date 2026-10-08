@@ -146,5 +146,5 @@ and two shaders (`Shaders/gfx_fixed.vert/.frag`, compiled with `scripts/compile-
 four-stage texture combiners, alpha test, vertex lighting, texture coordinate generation and transforms, pre-transformed vertices, stencil (shadow volumes).
 
 Not implemented yet: programmable shaders (caps advertise none, so the engine uses fixed-function paths; the updated water needs them), fog, off-screen render targets
-and back-buffer readback (shockwave and heat haze effects are skipped). The main menu buttons also do not show on startup in this backend.
+and back-buffer readback (shockwave and heat haze effects are skipped).
 The game is CPU-bound, so this backend is not faster than DXVK today; its purpose is to be the base for new rendering features.
