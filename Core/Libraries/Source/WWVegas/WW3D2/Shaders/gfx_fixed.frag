@@ -22,6 +22,9 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	vec4 lightPosType[4];  // xyz: position, w: type (1 point, 2 spot, 3 directional)
 	vec4 lightDirRange[4]; // xyz: direction, w: range
 	vec4 lightAtten[4];    // attenuation 0, 1, 2
+	mat4 worldView;        // camera space position and normal for texture coordinate generation
+	mat4 texMatrix[4];     // texture transform of each stage (D3D row-major, read like wvp)
+	uvec4 texGen[4];       // per stage: x = source (0 vertex set, 1 camera normal, 2 camera position, 3 reflection), y = vertex set, z = transform count (0 off), w = 1 projected
 } draw;
 
 layout(set = 0, binding = 1) uniform sampler2D tex0;
@@ -96,7 +99,7 @@ void main()
 
 		vec4 tex = vec4(1.0);
 		if (s1.w != 0u)
-			tex = sampleStage(i, vUv[min(s1.z, 3u)]);
+			tex = sampleStage(i, vUv[i]);
 
 		vec4 c1 = argument(s0.y, current, tex, diffuse);
 		vec4 c2 = argument(s0.z, current, tex, diffuse);

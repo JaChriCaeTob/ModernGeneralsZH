@@ -69,7 +69,7 @@ void Log(const char* fmt, ...)
 	X(vkCreateShaderModule) X(vkDestroyShaderModule) X(vkCreateGraphicsPipelines) X(vkDestroyPipeline) X(vkCmdBeginRendering) \
 	X(vkCmdEndRendering) X(vkCmdBindPipeline) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdBindVertexBuffers) \
 	X(vkCmdBindIndexBuffer) X(vkCmdDrawIndexed) X(vkCmdDraw) X(vkCmdPipelineBarrier2) X(vkCmdCopyBufferToImage) \
-	X(vkCmdClearAttachments)
+	X(vkCmdClearAttachments) X(vkCmdSetStencilReference)
 
 #define VKFN_DECLARE(n) PFN_##n n = nullptr;
 VKFN_GLOBAL(VKFN_DECLARE)
@@ -114,6 +114,7 @@ struct PipeKey
 	uint32_t blendEnable = 0, srcBlend = 0, dstBlend = 0, blendOp = 0;
 	uint32_t depthTest = 0, depthWrite = 0, depthFunc = 0;
 	uint32_t cull = 0, colorMask = 0, pretransformed = 0;
+	uint32_t stencilEnable = 0, stencilFunc = 0, stencilFail = 0, stencilZFail = 0, stencilPass = 0, stencilMask = 0, stencilWriteMask = 0;
 	bool operator<(const PipeKey& o) const { return memcmp(this, &o, sizeof(*this)) < 0; }
 };
 
@@ -130,8 +131,11 @@ struct DrawUbo
 	uint32_t lightFlags[4];
 	uint32_t lightInfo[4];
 	float lightDiffuse[4][4], lightAmbient[4][4], lightPosType[4][4], lightDirRange[4][4], lightAtten[4][4];
+	float worldView[16];
+	float texMatrix[4][16];
+	uint32_t texGen[4][4];
 };
-static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64, "DrawUbo must match the std140 block in the shaders");
+static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 4 * 64 + 4 * 16, "DrawUbo must match the std140 block in the shaders");
 
 uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
 
@@ -412,7 +416,7 @@ bool CreateSwapchain()
 	}
 
 	VkImageCreateInfo di{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-	di.imageType = VK_IMAGE_TYPE_2D; di.format = VK_FORMAT_D32_SFLOAT; di.extent = { ext.width, ext.height, 1 };
+	di.imageType = VK_IMAGE_TYPE_2D; di.format = VK_FORMAT_D32_SFLOAT_S8_UINT; di.extent = { ext.width, ext.height, 1 };
 	di.mipLevels = 1; di.arrayLayers = 1; di.samples = VK_SAMPLE_COUNT_1_BIT; di.tiling = VK_IMAGE_TILING_OPTIMAL;
 	di.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT; di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VKCHECK(vkCreateImage(B.device, &di, nullptr, &B.depthImage));
@@ -421,8 +425,8 @@ bool CreateSwapchain()
 	B.depthAlloc = Allocate(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
 	vkBindImageMemory(B.device, B.depthImage, B.depthAlloc.memory, B.depthAlloc.offset);
 	VkImageViewCreateInfo dv{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-	dv.image = B.depthImage; dv.viewType = VK_IMAGE_VIEW_TYPE_2D; dv.format = VK_FORMAT_D32_SFLOAT;
-	dv.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+	dv.image = B.depthImage; dv.viewType = VK_IMAGE_VIEW_TYPE_2D; dv.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+	dv.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1 };
 	VKCHECK(vkCreateImageView(B.device, &dv, nullptr, &B.depthView));
 	Log("swapchain %ux%u, %u images, format %d, present mode %d", ext.width, ext.height, n, (int)B.swapFormat, (int)mode);
 	return true;
@@ -725,21 +729,33 @@ VkPipeline GetPipeline(const PipeKey& key)
 	ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 	VkPipelineDepthStencilStateCreateInfo ds{ VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
 	ds.depthTestEnable = key.depthTest; ds.depthWriteEnable = key.depthWrite; ds.depthCompareOp = (VkCompareOp)key.depthFunc;
+	if (key.stencilEnable)
+	{
+		auto op = [](uint32_t d) {
+			switch (d) { case 2: return VK_STENCIL_OP_ZERO; case 3: return VK_STENCIL_OP_REPLACE; case 4: return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
+			case 5: return VK_STENCIL_OP_DECREMENT_AND_CLAMP; case 6: return VK_STENCIL_OP_INVERT; case 7: return VK_STENCIL_OP_INCREMENT_AND_WRAP;
+			case 8: return VK_STENCIL_OP_DECREMENT_AND_WRAP; default: return VK_STENCIL_OP_KEEP; } };
+		VkStencilOpState so{};
+		so.failOp = op(key.stencilFail); so.depthFailOp = op(key.stencilZFail); so.passOp = op(key.stencilPass);
+		so.compareOp = (VkCompareOp)(key.stencilFunc ? key.stencilFunc - 1 : VK_COMPARE_OP_ALWAYS);
+		so.compareMask = key.stencilMask; so.writeMask = key.stencilWriteMask;
+		ds.stencilTestEnable = VK_TRUE; ds.front = so; ds.back = so;
+	}
 	VkPipelineColorBlendAttachmentState cba{};
 	cba.blendEnable = key.blendEnable; cba.srcColorBlendFactor = BlendFactor(key.srcBlend); cba.dstColorBlendFactor = BlendFactor(key.dstBlend);
 	cba.colorBlendOp = BlendOperation(key.blendOp); cba.srcAlphaBlendFactor = cba.srcColorBlendFactor; cba.dstAlphaBlendFactor = cba.dstColorBlendFactor;
 	cba.alphaBlendOp = cba.colorBlendOp; cba.colorWriteMask = key.colorMask & 0xF;
 	VkPipelineColorBlendStateCreateInfo cb{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
 	cb.attachmentCount = 1; cb.pAttachments = &cba;
-	VkDynamicState dyn[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkDynamicState dyn[3] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_STENCIL_REFERENCE };
 	VkPipelineDynamicStateCreateInfo dys{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-	dys.dynamicStateCount = 2; dys.pDynamicStates = dyn;
+	dys.dynamicStateCount = 3; dys.pDynamicStates = dyn;
 	VkPipelineShaderStageCreateInfo stages[2] = { { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO }, { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO } };
 	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT; stages[0].module = B.vs; stages[0].pName = "main";
 	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = B.fs; stages[1].pName = "main";
 	VkFormat colorFormat = B.swapFormat;
 	VkPipelineRenderingCreateInfo ri{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
-	ri.colorAttachmentCount = 1; ri.pColorAttachmentFormats = &colorFormat; ri.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
+	ri.colorAttachmentCount = 1; ri.pColorAttachmentFormats = &colorFormat; ri.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; ri.stencilAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
 	VkGraphicsPipelineCreateInfo pi{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	pi.pNext = &ri; pi.stageCount = 2; pi.pStages = stages; pi.pVertexInputState = &vin; pi.pInputAssemblyState = &ia;
 	pi.pViewportState = &vp; pi.pRasterizationState = &rs; pi.pMultisampleState = &ms; pi.pDepthStencilState = &ds;
@@ -906,17 +922,17 @@ bool EnsureRendering()
 	}
 	ImageBarrier(B.cmd, B.swapImages[B.imageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-	ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT,
+	ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 0,
 		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 	VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
 	color.imageView = B.swapViews[B.imageIndex]; color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; color.storeOp = VK_ATTACHMENT_STORE_OP_STORE; color.clearValue.color = { { 0.f, 0.f, 0.f, 1.f } };
 	VkRenderingAttachmentInfo depth{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	depth.imageView = B.depthView; depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	depth.imageView = B.depthView; depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 	depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; depth.clearValue.depthStencil = { 1.0f, 0 };
 	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
-	ri.renderArea = { { 0, 0 }, B.extent }; ri.layerCount = 1; ri.colorAttachmentCount = 1; ri.pColorAttachments = &color; ri.pDepthAttachment = &depth;
+	ri.renderArea = { { 0, 0 }, B.extent }; ri.layerCount = 1; ri.colorAttachmentCount = 1; ri.pColorAttachments = &color; ri.pDepthAttachment = &depth; ri.pStencilAttachment = &depth;
 	vkCmdBeginRendering(B.cmd, &ri);
 	B.rendering = true;
 	return true;
@@ -935,7 +951,7 @@ void PresentFrame()
 	g_frameDrawLog = 0;
 	if (!g_drawTrace.empty())
 	{
-		const size_t from = g_drawTrace.size() > 80 ? g_drawTrace.size() - 80 : 0;
+		const size_t from = 0;
 		Log("last %u of %u draws of frame %u:", (unsigned)(g_drawTrace.size() - from), (unsigned)g_drawTrace.size(), g_frame);
 		for (size_t i = from; i < g_drawTrace.size(); ++i)
 			Log("  %s", g_drawTrace[i].c_str());
@@ -1018,6 +1034,7 @@ public:
 		: NullDevice(d3d, pp, focus, adapter, type, behavior)
 	{
 		for (int i = 0; i < 512; ++i) { memset(m_matrix[i], 0, sizeof(m_matrix[i])); m_matrix[i][0] = m_matrix[i][5] = m_matrix[i][10] = m_matrix[i][15] = 1.0f; }
+		m_renderStates[D3DRS_COLORWRITEENABLE] = 0xF;
 		HWND w = pp.hDeviceWindow ? pp.hDeviceWindow : focus;
 		if (!B.ready)
 		{
@@ -1080,10 +1097,10 @@ public:
 		if (B.ready) { DestroySwapchain(); B.acquired = false; }
 		return D3D_OK;
 	}
-	STDMETHOD(Clear)(THIS_ DWORD, CONST D3DRECT*, DWORD flags, D3DCOLOR color, float z, DWORD) override
+	STDMETHOD(Clear)(THIS_ DWORD, CONST D3DRECT*, DWORD flags, D3DCOLOR color, float z, DWORD stencil) override
 	{
 		if (!B.ready || !OnBackBuffer() || !EnsureRendering()) return D3D_OK;
-		VkClearAttachment att[2];
+		VkClearAttachment att[3];
 		uint32_t n = 0;
 		if (flags & 1)
 		{
@@ -1094,6 +1111,11 @@ public:
 		if (flags & 2)
 		{
 			att[n].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT; att[n].colorAttachment = 0; att[n].clearValue.depthStencil = { z, 0 };
+			++n;
+		}
+		if (flags & 4)
+		{
+			att[n].aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT; att[n].colorAttachment = 0; att[n].clearValue.depthStencil = { 0.0f, stencil };
 			++n;
 		}
 		if (n)
@@ -1182,7 +1204,6 @@ private:
 		if (!OnBackBuffer()) { ++g_cnt[1]; Note("skipped, render target is not the back buffer", m_vertexShader); return D3D_OK; }
 		if (m_pixelShader != 0) { ++g_cnt[2]; Note("skipped, pixel shader", m_vertexShader); return D3D_OK; }
 		if ((m_vertexShader & 0x80000000u) || m_vertexShader == 0) { ++g_cnt[3]; Note("skipped, vertex shader", m_vertexShader); return D3D_OK; }
-		if (m_renderStates[D3DRS_STENCILENABLE]) { ++g_cnt[4]; Note("skipped, stencil", m_vertexShader); return D3D_OK; }		// stencil is not supported yet
 		++g_cnt[0];
 		Note("drawn", m_vertexShader);
 		if (!EnsureRendering()) { ++g_cnt[13]; return D3D_OK; }
@@ -1253,6 +1274,17 @@ private:
 			if (u.stage[2 * s][3] == 0) u.stage[2 * s][3] = 1;
 		}
 		memcpy(u.world, m_matrix[256], 64);
+		memcpy(u.worldView, wv, 64);
+		for (int s = 0; s < 4; ++s)
+		{
+			const DWORD index = m_stageStates[s][D3DTSS_TEXCOORDINDEX];
+			const DWORD flags = m_stageStates[s][D3DTSS_TEXTURETRANSFORMFLAGS];
+			memcpy(u.texMatrix[s], m_matrix[D3DTS_TEXTURE0 + s], 64);
+			u.texGen[s][0] = (index >> 16) & 3;						// 0 pass through, 1 camera space normal, 2 camera space position, 3 reflection vector
+			u.texGen[s][1] = index & 3;
+			u.texGen[s][2] = flags & 7;								// D3DTTFF_COUNT1..4, 0 = transform off
+			u.texGen[s][3] = (flags & D3DTTFF_PROJECTED) ? 1 : 0;
+		}
 		{
 			// fixed-function lighting needs normals in the vertices
 			const bool lighting = m_renderStates[D3DRS_LIGHTING] != 0 && (fvf & 0x10) != 0 && !pretransformed;
@@ -1299,19 +1331,21 @@ private:
 		key.srcBlend = m_renderStates[D3DRS_SRCBLEND]; key.dstBlend = m_renderStates[D3DRS_DESTBLEND]; key.blendOp = m_renderStates[D3DRS_BLENDOP];
 		key.depthTest = m_renderStates[D3DRS_ZENABLE] ? 1 : 0; key.depthWrite = m_renderStates[D3DRS_ZWRITEENABLE] ? 1 : 0;
 		key.depthFunc = m_renderStates[D3DRS_ZFUNC] ? m_renderStates[D3DRS_ZFUNC] - 1 : VK_COMPARE_OP_LESS_OR_EQUAL;
-		key.cull = m_renderStates[D3DRS_CULLMODE]; key.colorMask = m_renderStates[D3DRS_COLORWRITEENABLE] ? m_renderStates[D3DRS_COLORWRITEENABLE] : 0xF;
+		key.stencilEnable = m_renderStates[D3DRS_STENCILENABLE] ? 1 : 0;
+		if (key.stencilEnable)
+		{
+			key.stencilFunc = m_renderStates[D3DRS_STENCILFUNC]; key.stencilFail = m_renderStates[D3DRS_STENCILFAIL];
+			key.stencilZFail = m_renderStates[D3DRS_STENCILZFAIL]; key.stencilPass = m_renderStates[D3DRS_STENCILPASS];
+			key.stencilMask = m_renderStates[D3DRS_STENCILMASK]; key.stencilWriteMask = m_renderStates[D3DRS_STENCILWRITEMASK];
+		}
+		key.cull = m_renderStates[D3DRS_CULLMODE]; key.colorMask = m_renderStates[D3DRS_COLORWRITEENABLE] & 0xF;
 		VkPipeline pipe = GetPipeline(key);
 		if (!pipe) return D3D_OK;
-		if (g_frame == 29999)
+		if (g_frame == 50000)
 		{
-			D3DSURFACE_DESC d{};
-			if (m_tex[0]) static_cast<NullTexture*>(m_tex[0])->GetLevelDesc(0, &d);
-			const float* v0 = (const float*)vertices;
-			char line[400];
-			_snprintf(line, sizeof(line), "fvf %03X prim %d verts %u idx %u tex %ux%u fmt %d | blend %u (%u,%u) zen %u zw %u cull %u | op %u/%u args %u,%u | v0 %.2f %.2f %.2f diffuse %08X",
-				fvf, (int)type, (unsigned)numVertices, indexCount, d.Width, d.Height, (int)d.Format, key.blendEnable, key.srcBlend, key.dstBlend, key.depthTest, key.depthWrite, key.cull,
-				m_stageStates[0][D3DTSS_COLOROP], m_stageStates[0][D3DTSS_ALPHAOP], m_stageStates[0][D3DTSS_COLORARG1], m_stageStates[0][D3DTSS_COLORARG2],
-				v0[0], v0[1], v0[2], (fvf & 0x40) ? *(const DWORD*)((const char*)v0 + (fvf & 0xE) * 0 + 12 + ((fvf & 0x10) ? 12 : 0)) : 0u);
+			char line[300];
+			_snprintf(line, sizeof(line), "fvf %03X verts %u idx %u tex0 %s | world %.0f %.0f %.0f | zen %u zw %u blend %u cull %u | stencil %u", fvf, (unsigned)numVertices, indexCount,
+				m_tex[0] ? "y" : "n", m_matrix[256][12], m_matrix[256][13], m_matrix[256][14], key.depthTest, key.depthWrite, key.blendEnable, key.cull, m_renderStates[D3DRS_STENCILENABLE]);
 			g_drawTrace.push_back(line);
 		}
 
@@ -1328,6 +1362,7 @@ private:
 			std::min<uint32_t>(m_viewport.Height, B.extent.height - std::min<uint32_t>(m_viewport.Y, B.extent.height)) };
 		vkCmdSetViewport(B.cmd, 0, 1, &vp);
 		vkCmdSetScissor(B.cmd, 0, 1, &sc);
+		vkCmdSetStencilReference(B.cmd, VK_STENCIL_FACE_FRONT_AND_BACK, m_renderStates[D3DRS_STENCILREF]);
 
 		VkDescriptorBufferInfo ubo{ B.ring, uOff, sizeof(DrawUbo) };
 		VkDescriptorImageInfo imgs[4];

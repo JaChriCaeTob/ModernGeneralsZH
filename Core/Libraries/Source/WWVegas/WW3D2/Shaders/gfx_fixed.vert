@@ -32,10 +32,44 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	vec4 lightPosType[4];  // xyz: position, w: type (1 point, 2 spot, 3 directional)
 	vec4 lightDirRange[4]; // xyz: direction, w: range
 	vec4 lightAtten[4];    // attenuation 0, 1, 2
+	mat4 worldView;        // camera space position and normal for texture coordinate generation
+	mat4 texMatrix[4];     // texture transform of each stage (D3D row-major, read like wvp)
+	uvec4 texGen[4];       // per stage: x = source (0 vertex set, 1 camera normal, 2 camera position, 3 reflection), y = vertex set, z = transform count (0 off), w = 1 projected
 } draw;
 
 layout(location = 0) out vec4 vDiffuse;
 layout(location = 1) out vec4 vUv[4];
+
+vec4 vertexUvSet(uint k)
+{
+	if (k == 1u) return inUv1;
+	if (k == 2u) return inUv2;
+	if (k == 3u) return inUv3;
+	return inUv0;
+}
+
+// Direct3D 8 texture coordinate generation, texture transform and projection for stage i
+vec4 stageCoordinates(uint i)
+{
+	uvec4 g = draw.texGen[i];
+	vec4 src;
+	vec3 viewPos = (draw.worldView * vec4(inPos.xyz, 1.0)).xyz;
+	vec3 viewNrm = mat3(draw.worldView) * inNormal.xyz;
+	if (g.x == 1u) src = vec4(normalize(viewNrm), 1.0);
+	else if (g.x == 2u) src = vec4(viewPos, 1.0);
+	else if (g.x == 3u) src = vec4(reflect(normalize(viewPos), normalize(viewNrm)), 1.0);
+	else src = vertexUvSet(g.y);
+	if (g.z != 0u)
+	{
+		src = draw.texMatrix[i] * vec4(src.xyz, (g.x == 0u && g.z >= 4u) ? src.w : 1.0);
+		if (g.w != 0u)
+		{
+			float q = g.z == 2u ? src.y : (g.z == 3u ? src.z : src.w);
+			if (q != 0.0) src.xy /= q;
+		}
+	}
+	return vec4(src.xy, 0.0, 1.0);
+}
 
 // Direct3D 8 fixed-function vertex lighting (diffuse and ambient, no specular)
 vec4 lit(vec3 worldPos, vec3 worldNormal)
@@ -68,7 +102,8 @@ vec4 lit(vec3 worldPos, vec3 worldNormal)
 void main()
 {
 	vDiffuse = inDiffuse;
-	vUv[0] = inUv0; vUv[1] = inUv1; vUv[2] = inUv2; vUv[3] = inUv3;
+	for (uint i = 0u; i < 4u; ++i)
+		vUv[i] = stageCoordinates(i);
 
 	if (draw.flags.x != 0u)
 	{
