@@ -432,7 +432,7 @@ void DynamicMeshClass::Render(RenderInfoClass & rinfo)
 		const FrustumClass & frustum = rinfo.Camera.Get_Frustum();
 
 		if (CollisionMath::Overlap_Test(frustum, Get_Bounding_Box()) != CollisionMath::OUTSIDE) {
-			DX8Wrapper::Set_Transform(D3DTS_WORLD, Transform);
+			DX8Wrapper::Set_Transform(GFX_TS_WORLD, Transform);
 			Model->Render(rinfo);
 		}
 	}

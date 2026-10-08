@@ -608,8 +608,8 @@ void Render2DClass::Render()
 	Matrix4x4 view,proj;
 	Matrix4x4 identity(true);
 
-	DX8Wrapper::Get_Transform(D3DTS_VIEW,view);
-	DX8Wrapper::Get_Transform(D3DTS_PROJECTION,proj);
+	DX8Wrapper::Get_Transform(GFX_TS_VIEW,view);
+	DX8Wrapper::Get_Transform(GFX_TS_PROJECTION,proj);
 
 	//
 	//	Configure the viewport for entire screen
@@ -633,7 +633,7 @@ void Render2DClass::Render()
 
 	DX8Wrapper::Set_World_Identity();
 	DX8Wrapper::Set_View_Identity();
-	DX8Wrapper::Set_Transform(D3DTS_PROJECTION,identity);
+	DX8Wrapper::Set_Transform(GFX_TS_PROJECTION,identity);
 
 	DynamicVBAccessClass vb(BUFFER_TYPE_DYNAMIC_DX8,dynamic_fvf_type,Vertices.Count());
 	{
@@ -671,34 +671,34 @@ void Render2DClass::Render()
 		if (DX8Wrapper::Get_Current_Caps()->Support_Dot3())
 		{
 			//Override W3D states with customizations for grayscale
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_TEXTUREFACTOR, 0x80A5CA8E);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_COLORARG0, D3DTA_TFACTOR | D3DTA_ALPHAREPLICATE);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_COLORARG2, D3DTA_TFACTOR | D3DTA_ALPHAREPLICATE);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_COLOROP, D3DTOP_MULTIPLYADD);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_TEXTUREFACTOR, 0x80A5CA8E);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_COLORARG0, GFX_TA_TFACTOR | GFX_TA_ALPHAREPLICATE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_COLORARG1, GFX_TA_TEXTURE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_COLORARG2, GFX_TA_TFACTOR | GFX_TA_ALPHAREPLICATE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_COLOROP, GFX_TOP_MULTIPLYADD);
 
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 1, D3DTSS_COLORARG1, D3DTA_CURRENT);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 1, D3DTSS_COLORARG2, D3DTA_TFACTOR);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 1, D3DTSS_COLOROP, D3DTOP_DOTPRODUCT3);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 1, GFX_TSS_COLORARG1, GFX_TA_CURRENT);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 1, GFX_TSS_COLORARG2, GFX_TA_TFACTOR);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 1, GFX_TSS_COLOROP, GFX_TOP_DOTPRODUCT3);
 		}
 		else
 		{
 			//doesn't have DOT3 blend mode so fake it another way.
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_TEXTUREFACTOR, 0x60606060);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_TEXTUREFACTOR, 0x60606060);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_COLORARG1, GFX_TA_TEXTURE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_COLORARG2, GFX_TA_TFACTOR);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_COLOROP, GFX_TOP_MODULATE);
 
 			// TheSuperHackers @bugfix Stubbjax 08/01/2026 Fix possible greyscale rendering issues on hardware without DOT3 support.
-			DX8Wrapper::Set_DX8_Texture_Stage_State( 1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State( 1, GFX_TSS_COLOROP, GFX_TOP_DISABLE);
 		}
 	}
 	else
 		DX8Wrapper::Set_Shader(Shader);
 	DX8Wrapper::Draw_Triangles(0,Indices.Count()/3,0,Vertices.Count());
 
-	DX8Wrapper::Set_Transform(D3DTS_VIEW,view);
-	DX8Wrapper::Set_Transform(D3DTS_PROJECTION,proj);
+	DX8Wrapper::Set_Transform(GFX_TS_VIEW,view);
+	DX8Wrapper::Set_Transform(GFX_TS_PROJECTION,proj);
 	if (IsGrayScale)
 		ShaderClass::Invalidate();	//force both stages to be reset.
 

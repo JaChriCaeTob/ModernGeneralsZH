@@ -221,7 +221,7 @@ void W3DDebugIcons::Render(RenderInfoClass & rinfo)
 	DX8Wrapper::Set_Texture(0, nullptr);
 	DX8Wrapper::Apply_Render_State_Changes();
 
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,Transform);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,Transform);
 
 	Int numRect = m_numDebugIcons;
 	static Real offset = 30;

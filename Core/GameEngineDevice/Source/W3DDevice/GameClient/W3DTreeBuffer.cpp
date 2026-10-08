@@ -1628,7 +1628,7 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	DX8Wrapper::Set_Vertex_Buffer(vb_access);
 
 	Matrix3D tm(1);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,tm);
 
 	DX8Wrapper::Draw_Triangles(	0,2, 0,	4);	//draw a quad, 2 triangles, 4 verts
 #endif
@@ -1641,8 +1641,8 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 
 	DX8Wrapper::Set_Texture(0,m_treeTexture);
 	DX8Wrapper::Set_Texture(1,nullptr);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0,  D3DTSS_TEXCOORDINDEX, 0);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(1,  D3DTSS_TEXCOORDINDEX, 1);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0,  GFX_TSS_TEXCOORDINDEX, 0);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(1,  GFX_TSS_TEXCOORDINDEX, 1);
 	// Draw all the trees.
 	DX8Wrapper::Apply_Render_State_Changes();
 	W3DShaderManager::setShroudTex(1);
@@ -1650,9 +1650,9 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 
 	if (m_dwTreeVertexShader) {
 		D3DXMATRIX matProj, matView, matWorld;
-		DX8Wrapper::_Get_DX8_Transform(D3DTS_WORLD, matWorld);
-		DX8Wrapper::_Get_DX8_Transform(D3DTS_VIEW, matView);
-		DX8Wrapper::_Get_DX8_Transform(D3DTS_PROJECTION, matProj);
+		DX8Wrapper::_Get_DX8_Transform(GFX_TS_WORLD, matWorld);
+		DX8Wrapper::_Get_DX8_Transform(GFX_TS_VIEW, matView);
+		DX8Wrapper::_Get_DX8_Transform(GFX_TS_PROJECTION, matProj);
 		D3DXMATRIX mat;
 		D3DXMatrixMultiply( &mat, &matView, &matProj );
 		D3DXMatrixMultiply( &mat, &matWorld, &mat );
@@ -1718,9 +1718,9 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 		DX8Wrapper::Apply_Render_State_Changes();
 		if (m_dwTreeVertexShader) {
 			DX8Wrapper::Raw_Set_Vertex_Shader(m_dwTreeVertexShader);
-			DX8Wrapper::Raw_Set_Texture_Stage_State(0,  D3DTSS_TEXCOORDINDEX, 0);
-			DX8Wrapper::Raw_Set_Texture_Stage_State(1,  D3DTSS_TEXCOORDINDEX, 1);
-			DX8Wrapper::Raw_Set_Texture_Stage_State(1,  D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+			DX8Wrapper::Raw_Set_Texture_Stage_State(0,  GFX_TSS_TEXCOORDINDEX, 0);
+			DX8Wrapper::Raw_Set_Texture_Stage_State(1,  GFX_TSS_TEXCOORDINDEX, 1);
+			DX8Wrapper::Raw_Set_Texture_Stage_State(1,  GFX_TSS_TEXTURETRANSFORMFLAGS, GFX_TTFF_DISABLE);
 		}
 		DX8Wrapper::Draw_Triangles(	0, m_curNumTreeIndices[bNdx]/3, 0,	m_curNumTreeVertices[bNdx]);
 	}

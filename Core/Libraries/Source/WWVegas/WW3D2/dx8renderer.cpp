@@ -1726,7 +1726,7 @@ void DX8TextureCategoryClass::Render()
 		//DX8Wrapper::Set_Material(material);
 		//REF_PTR_RELEASE(material);
 		DX8Wrapper::Apply_Render_State_Changes();
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND,D3DBLEND_DESTCOLOR);
+		DX8Wrapper::Set_DX8_Render_State(GFX_RS_SRCBLEND,GFX_BLEND_DESTCOLOR);
 	}
 
 
@@ -1864,13 +1864,13 @@ void DX8TextureCategoryClass::Render()
 		}
 		else {
 			SNAPSHOT_SAY(("Set_World_Transform"));
-			DX8Wrapper::Set_Transform(D3DTS_WORLD,*world_transform);
+			DX8Wrapper::Set_Transform(GFX_TS_WORLD,*world_transform);
 		}
 
 
 //--------------------------------------------------------------------
 		if (mesh->Get_ObjectScale() != 1.0f)
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_NORMALIZENORMALS, TRUE);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_NORMALIZENORMALS, TRUE);
 //--------------------------------------------------------------------
 		/*
 		** Render mesh using either sorting or immediate pipeline
@@ -1915,11 +1915,11 @@ void DX8TextureCategoryClass::Render()
 					vmaterial->Set_Opacity(mesh->Get_Alpha_Override());
 					DX8Wrapper::Set_Shader(theAlphaShader);
 					DX8Wrapper::Apply_Render_State_Changes();
-					DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,(int)((float)0x60*mesh->Get_Alpha_Override()));
+					DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHAREF,(int)((float)0x60*mesh->Get_Alpha_Override()));
 
 					renderer->Render(mesh->Get_Base_Vertex_Offset());
 
-					DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,0x60);
+					DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHAREF,0x60);
 					vmaterial->Set_Opacity(oldOpacity);	//restore previous value
 					vmaterial->Set_Diffuse(oldDiffuse.X,oldDiffuse.Y,oldDiffuse.Z);
 					DX8Wrapper::Set_Shader(theShader);	//restore previous value
@@ -1939,7 +1939,7 @@ void DX8TextureCategoryClass::Render()
 		}
 //--------------------------------------------------------------------
 		if (mesh->Get_ObjectScale() != 1.0f)
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_NORMALIZENORMALS, FALSE);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_NORMALIZENORMALS, FALSE);
 //--------------------------------------------------------------------
 
 
@@ -2230,7 +2230,7 @@ void DX8MeshRendererClass::Render_Decal_Meshes()
 	DecalMeshClass * decal_mesh = visible_decal_meshes;
 	if (!decal_mesh) return;
 
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZBIAS,8);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ZBIAS,8);
 
 	while (decal_mesh != nullptr) {
 		decal_mesh->Render();
@@ -2238,7 +2238,7 @@ void DX8MeshRendererClass::Render_Decal_Meshes()
 	}
 	visible_decal_meshes = nullptr;
 
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZBIAS,0);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ZBIAS,0);
 }
 
 // ----------------------------------------------------------------------------

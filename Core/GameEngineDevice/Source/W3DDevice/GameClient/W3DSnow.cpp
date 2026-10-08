@@ -316,7 +316,7 @@ flush_particles:
 		if (numberInBatch)
 		{
 			Debug_Statistics::Record_DX8_Polys_And_Vertices(numberInBatch*2,numberInBatch*4,ShaderClass::_PresetOpaqueShader);
-			DX8Wrapper::Raw_Draw_Primitive( D3DPT_POINTLIST, m_dwBase, numberInBatch);
+			DX8Wrapper::Raw_Draw_Primitive( GFX_PT_POINTLIST, m_dwBase, numberInBatch);
 			totalPart -= numberInBatch;
 			m_dwBase += numberInBatch;
 		}
@@ -395,7 +395,7 @@ void W3DSnowManager::render(RenderInfoClass &rinfo)
 	m_heightTraveled=m_time*m_velocity+cameraOffset;	//height that snow flake traveled this frame.
 
 	Matrix4x4 identity(true);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,identity);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,identity);
 
 	DX8Wrapper::Set_Shader(ShaderClass::_PresetAlphaShader);
 
@@ -423,14 +423,14 @@ void W3DSnowManager::render(RenderInfoClass &rinfo)
 	DX8Wrapper::Apply_Render_State_Changes();
 
     // Set the render states for using point sprites
-	DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSPRITEENABLE, TRUE );
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSCALEENABLE,  TRUE );
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSIZE,     FtoDW(m_pointSize) );
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSIZE_MIN, FtoDW(m_minPointSize) );
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSIZE_MAX, FtoDW(m_maxPointSize) );
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSCALE_A,  FtoDW(0.00f) );
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSCALE_B,  FtoDW(0.00f) );
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSCALE_C,  FtoDW(1.00f) );
+	DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSPRITEENABLE, TRUE );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSCALEENABLE,  TRUE );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSIZE,     FtoDW(m_pointSize) );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSIZE_MIN, FtoDW(m_minPointSize) );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSIZE_MAX, FtoDW(m_maxPointSize) );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSCALE_A,  FtoDW(0.00f) );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSCALE_B,  FtoDW(0.00f) );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSCALE_C,  FtoDW(1.00f) );
 
 	DX8Wrapper::Raw_Set_Stream_Source( 0, m_VertexBufferD3D, sizeof(POINTVERTEX) );
     DX8Wrapper::Raw_Set_Vertex_Shader( D3DFVF_POINTVERTEX );
@@ -445,8 +445,8 @@ void W3DSnowManager::render(RenderInfoClass &rinfo)
 	renderSubBox(rinfo,cubeOriginX,cubeOriginY,cubeDimX,cubeDimY);
 
 	// Reset render states
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSPRITEENABLE, FALSE );
-    DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSCALEENABLE,  FALSE );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSPRITEENABLE, FALSE );
+    DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSCALEENABLE,  FALSE );
 
 }
 
@@ -486,7 +486,7 @@ void W3DSnowManager::renderAsQuads(RenderInfoClass &rinfo, Int cubeOriginX, Int 
 	}
 
 	Matrix4x4 identity(true);
-	DX8Wrapper::Set_Transform(D3DTS_VIEW,identity);
+	DX8Wrapper::Set_Transform(GFX_TS_VIEW,identity);
 
 	DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
 

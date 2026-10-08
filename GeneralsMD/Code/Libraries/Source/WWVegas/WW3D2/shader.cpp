@@ -49,7 +49,7 @@
 
 bool ShaderClass::ShaderDirty=true;
 unsigned long ShaderClass::CurrentShader=0;
-unsigned long _PolygonCullMode = D3DCULL_CW;
+unsigned long _PolygonCullMode = GFX_CULL_CW;
 
 
 /*
@@ -377,20 +377,20 @@ public:
 
 const Blend srcBlendLUT[ShaderClass::SRCBLEND_MAX] =
 {
-	Blend(D3DBLEND_ZERO, false),
-	Blend(D3DBLEND_ONE, false),
-	Blend(D3DBLEND_SRCALPHA, true),
- 	Blend(D3DBLEND_DESTCOLOR, true)
+	Blend(GFX_BLEND_ZERO, false),
+	Blend(GFX_BLEND_ONE, false),
+	Blend(GFX_BLEND_SRCALPHA, true),
+ 	Blend(GFX_BLEND_DESTCOLOR, true)
 };
 
 const Blend dstBlendLUT[ShaderClass::DSTBLEND_MAX] =
 {
-	Blend(D3DBLEND_ZERO, false),
-	Blend(D3DBLEND_ONE, false),
- 	Blend(D3DBLEND_SRCCOLOR, false),
- 	Blend(D3DBLEND_INVSRCCOLOR, false),
- 	Blend(D3DBLEND_SRCALPHA, true),
- 	Blend(D3DBLEND_INVSRCALPHA, true)
+	Blend(GFX_BLEND_ZERO, false),
+	Blend(GFX_BLEND_ONE, false),
+ 	Blend(GFX_BLEND_SRCCOLOR, false),
+ 	Blend(GFX_BLEND_INVSRCCOLOR, false),
+ 	Blend(GFX_BLEND_SRCALPHA, true),
+ 	Blend(GFX_BLEND_INVSRCALPHA, true)
 };
 
 
@@ -441,8 +441,8 @@ void ShaderClass::Apply()
 
 		if(!planeMask)
 		{
-			sf = D3DBLEND_ZERO;
-			df = D3DBLEND_ONE;
+			sf = GFX_BLEND_ZERO;
+			df = GFX_BLEND_ONE;
 		}
 		else
 		{
@@ -454,13 +454,13 @@ void ShaderClass::Apply()
 
 		BOOL blendOn = FALSE;
 
-		if(sf != D3DBLEND_ONE || df != D3DBLEND_ZERO)
+		if(sf != GFX_BLEND_ONE || df != GFX_BLEND_ZERO)
 		{
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND,sf);
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_DESTBLEND,df);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_SRCBLEND,sf);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_DESTBLEND,df);
 			blendOn = TRUE;
 		}
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE,blendOn);
+		DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHABLENDENABLE,blendOn);
 
 		BOOL alphaTest = FALSE;
 
@@ -468,20 +468,20 @@ void ShaderClass::Apply()
 		{
 			unsigned char alphareference = 0x60;	// Alpha reference value that produces best results with mip-mapped textures.
 
-			if(sf == D3DBLEND_INVSRCALPHA)
+			if(sf == GFX_BLEND_INVSRCALPHA)
 			{
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,0xff - alphareference);
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAFUNC,D3DCMP_LESSEQUAL);
+				DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHAREF,0xff - alphareference);
+				DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHAFUNC,GFX_CMP_LESSEQUAL);
 			}
 			else
 			{
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,alphareference);
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAFUNC,D3DCMP_GREATEREQUAL);
+				DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHAREF,alphareference);
+				DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHAFUNC,GFX_CMP_GREATEREQUAL);
 			}
 			blendAlpha = true;
 			alphaTest = TRUE;
 		}
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHATESTENABLE,alphaTest);
+		DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHATESTENABLE,alphaTest);
 
 		diff &= ~(ShaderClass::MASK_COLORMASK | ShaderClass::MASK_SRCBLEND | ShaderClass::MASK_DSTBLEND | ShaderClass::MASK_ALPHATEST);
 		if(!diff)
@@ -515,15 +515,15 @@ void ShaderClass::Apply()
 				break;
 			}
 
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FOGENABLE,fm);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_FOGENABLE,fm);
 
 			if(fm)
 			{
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_FOGCOLOR,fogColor);
+				DX8Wrapper::Set_DX8_Render_State(GFX_RS_FOGCOLOR,fogColor);
 			}
 
 		} else {
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FOGENABLE,FALSE);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_FOGENABLE,FALSE);
 		}
 
 		diff &= ~(ShaderClass::MASK_FOG);
@@ -533,21 +533,21 @@ void ShaderClass::Apply()
 
 	// Defaults
 
-	D3DTEXTUREOP	PricOp	= D3DTOP_SELECTARG1;
-	DWORD				PricArg1 = D3DTA_DIFFUSE;
-	DWORD				PricArg2 = D3DTA_DIFFUSE;
+	D3DTEXTUREOP	PricOp	= GFX_TOP_SELECTARG1;
+	DWORD				PricArg1 = GFX_TA_DIFFUSE;
+	DWORD				PricArg2 = GFX_TA_DIFFUSE;
 
-	D3DTEXTUREOP	PriaOp	 = D3DTOP_SELECTARG1;
-	DWORD			PriaArg1 = D3DTA_DIFFUSE;
-	DWORD			PriaArg2 = D3DTA_DIFFUSE;
+	D3DTEXTUREOP	PriaOp	 = GFX_TOP_SELECTARG1;
+	DWORD			PriaArg1 = GFX_TA_DIFFUSE;
+	DWORD			PriaArg2 = GFX_TA_DIFFUSE;
 
-	D3DTEXTUREOP	SeccOp	 = D3DTOP_DISABLE;
-	DWORD			SeccArg1 = D3DTA_TEXTURE;
-	DWORD			SeccArg2 = D3DTA_CURRENT;
+	D3DTEXTUREOP	SeccOp	 = GFX_TOP_DISABLE;
+	DWORD			SeccArg1 = GFX_TA_TEXTURE;
+	DWORD			SeccArg2 = GFX_TA_CURRENT;
 
-	D3DTEXTUREOP	SecaOp	 = D3DTOP_DISABLE;
-	DWORD			SecaArg1 = D3DTA_TEXTURE;
-	DWORD			SecaArg2 = D3DTA_CURRENT;
+	D3DTEXTUREOP	SecaOp	 = GFX_TOP_DISABLE;
+	DWORD			SecaArg1 = GFX_TA_TEXTURE;
+	DWORD			SecaArg2 = GFX_TA_CURRENT;
 
 	bool voodoo3=(DX8Wrapper::Get_Current_Caps()->Get_Vendor()==DX8Caps::VENDOR_3DFX) &&
 					 (DX8Wrapper::Get_Current_Caps()->Get_Device()==DX8Caps::DEVICE_3DFX_VOODOO_3);
@@ -569,52 +569,52 @@ void ShaderClass::Apply()
 			{
 			case ShaderClass::GRADIENT_DISABLE:
 				//Decal
-				PricOp = D3DTOP_SELECTARG1;
-				PricArg1 = D3DTA_TEXTURE;
-				PricArg2 = D3DTA_CURRENT;
-				PriaOp = D3DTOP_SELECTARG1;
-				PriaArg1 = D3DTA_TEXTURE;
-				PriaArg2 = D3DTA_CURRENT;
+				PricOp = GFX_TOP_SELECTARG1;
+				PricArg1 = GFX_TA_TEXTURE;
+				PricArg2 = GFX_TA_CURRENT;
+				PriaOp = GFX_TOP_SELECTARG1;
+				PriaArg1 = GFX_TA_TEXTURE;
+				PriaArg2 = GFX_TA_CURRENT;
 				break;
 			default:
 			case ShaderClass::GRADIENT_MODULATE:
-				PricOp = D3DTOP_MODULATE;
-				PricArg1 = D3DTA_TEXTURE;
-				PricArg2 = D3DTA_DIFFUSE;
-				PriaOp = D3DTOP_MODULATE;
-				PriaArg1 = D3DTA_TEXTURE;
-				PriaArg2 = D3DTA_DIFFUSE;
+				PricOp = GFX_TOP_MODULATE;
+				PricArg1 = GFX_TA_TEXTURE;
+				PricArg2 = GFX_TA_DIFFUSE;
+				PriaOp = GFX_TOP_MODULATE;
+				PriaArg1 = GFX_TA_TEXTURE;
+				PriaArg2 = GFX_TA_DIFFUSE;
 				break;
 			case ShaderClass::GRADIENT_ADD:
 				//Modulate Alpha
 				if(!(TextureOpCaps & D3DTEXOPCAPS_ADD))
-					PricOp = D3DTOP_MODULATE;
+					PricOp = GFX_TOP_MODULATE;
 				else
-					PricOp = D3DTOP_ADD;
-				PricArg1 = D3DTA_TEXTURE;
-				PricArg2 = D3DTA_DIFFUSE;
-				PriaOp = D3DTOP_MODULATE;
-				PriaArg1 = D3DTA_TEXTURE;
-				PriaArg2 = D3DTA_DIFFUSE;
+					PricOp = GFX_TOP_ADD;
+				PricArg1 = GFX_TA_TEXTURE;
+				PricArg2 = GFX_TA_DIFFUSE;
+				PriaOp = GFX_TOP_MODULATE;
+				PriaArg1 = GFX_TA_TEXTURE;
+				PriaArg2 = GFX_TA_DIFFUSE;
 				break;
 
 			// Bump map is a hack currently as we only have two stages in use!
 			case ShaderClass::GRADIENT_BUMPENVMAP:
 				if(TextureOpCaps & D3DTEXOPCAPS_BUMPENVMAP)
 				{
-					PricOp=D3DTOP_BUMPENVMAP;
-					PricArg1=D3DTA_TEXTURE;
-					PricArg2=D3DTA_DIFFUSE;
-					PriaOp = D3DTOP_DISABLE;
-					PriaArg1 = D3DTA_TEXTURE;
-					PriaArg2 = D3DTA_CURRENT;
+					PricOp=GFX_TOP_BUMPENVMAP;
+					PricArg1=GFX_TA_TEXTURE;
+					PricArg2=GFX_TA_DIFFUSE;
+					PriaOp = GFX_TOP_DISABLE;
+					PriaArg1 = GFX_TA_TEXTURE;
+					PriaArg2 = GFX_TA_CURRENT;
 				} else {
-					PricOp = D3DTOP_SELECTARG1;
-					PricArg1 = D3DTA_DIFFUSE;
-					PricArg2 = D3DTA_DIFFUSE;
-					PriaOp = D3DTOP_SELECTARG1;
-					PriaArg1 = D3DTA_DIFFUSE;
-					PriaArg2 = D3DTA_DIFFUSE;
+					PricOp = GFX_TOP_SELECTARG1;
+					PricArg1 = GFX_TA_DIFFUSE;
+					PricArg2 = GFX_TA_DIFFUSE;
+					PriaOp = GFX_TOP_SELECTARG1;
+					PriaArg1 = GFX_TA_DIFFUSE;
+					PriaArg2 = GFX_TA_DIFFUSE;
 				}
 				break;
 
@@ -622,33 +622,33 @@ void ShaderClass::Apply()
 			case ShaderClass::GRADIENT_BUMPENVMAPLUMINANCE:
 				if(TextureOpCaps & D3DTEXOPCAPS_BUMPENVMAPLUMINANCE)
 				{
-					PricOp=D3DTOP_BUMPENVMAPLUMINANCE;
-					PricArg1=D3DTA_TEXTURE;
-					PricArg2=D3DTA_DIFFUSE;
-					PriaOp = D3DTOP_DISABLE;
-					PriaArg1 = D3DTA_TEXTURE;
-					PriaArg2 = D3DTA_CURRENT;
+					PricOp=GFX_TOP_BUMPENVMAPLUMINANCE;
+					PricArg1=GFX_TA_TEXTURE;
+					PricArg2=GFX_TA_DIFFUSE;
+					PriaOp = GFX_TOP_DISABLE;
+					PriaArg1 = GFX_TA_TEXTURE;
+					PriaArg2 = GFX_TA_CURRENT;
 				} else {
-					PricOp = D3DTOP_SELECTARG1;
-					PricArg1 = D3DTA_DIFFUSE;
-					PricArg2 = D3DTA_DIFFUSE;
-					PriaOp = D3DTOP_SELECTARG1;
-					PriaArg1 = D3DTA_DIFFUSE;
-					PriaArg2 = D3DTA_DIFFUSE;
+					PricOp = GFX_TOP_SELECTARG1;
+					PricArg1 = GFX_TA_DIFFUSE;
+					PricArg2 = GFX_TA_DIFFUSE;
+					PriaOp = GFX_TOP_SELECTARG1;
+					PriaArg1 = GFX_TA_DIFFUSE;
+					PriaArg2 = GFX_TA_DIFFUSE;
 				}
 				break;
 
 			case ShaderClass::GRADIENT_MODULATE2X:
 				//Modulate Alpha
-				if(!(TextureOpCaps & D3DTOP_MODULATE2X))
-					PricOp = D3DTOP_MODULATE;
+				if(!(TextureOpCaps & GFX_TOP_MODULATE2X))
+					PricOp = GFX_TOP_MODULATE;
 				else
-					PricOp = D3DTOP_MODULATE2X;
-				PricArg1 = D3DTA_TEXTURE;
-				PricArg2 = D3DTA_DIFFUSE;
-				PriaOp = D3DTOP_MODULATE;
-				PriaArg1 = D3DTA_TEXTURE;
-				PriaArg2 = D3DTA_DIFFUSE;
+					PricOp = GFX_TOP_MODULATE2X;
+				PricArg1 = GFX_TA_TEXTURE;
+				PricArg2 = GFX_TA_DIFFUSE;
+				PriaOp = GFX_TOP_MODULATE;
+				PriaArg1 = GFX_TA_TEXTURE;
+				PriaArg2 = GFX_TA_DIFFUSE;
 				break;
 			}
 
@@ -658,29 +658,29 @@ void ShaderClass::Apply()
 			switch(Get_Primary_Gradient())
 			{
 			case ShaderClass::GRADIENT_DISABLE:
-				PricOp = D3DTOP_DISABLE;
-				PricArg1 = D3DTA_TEXTURE;
-				PricArg2 = D3DTA_CURRENT;
-				PriaOp = D3DTOP_DISABLE;
-				PriaArg1 = D3DTA_TEXTURE;
-				PriaArg2 = D3DTA_CURRENT;
+				PricOp = GFX_TOP_DISABLE;
+				PricArg1 = GFX_TA_TEXTURE;
+				PricArg2 = GFX_TA_CURRENT;
+				PriaOp = GFX_TOP_DISABLE;
+				PriaArg1 = GFX_TA_TEXTURE;
+				PriaArg2 = GFX_TA_CURRENT;
 				break;
 			default:
 			case ShaderClass::GRADIENT_MODULATE:
-				PricOp = D3DTOP_SELECTARG2;
-				PricArg1 = D3DTA_TEXTURE;
-				PricArg2 = D3DTA_DIFFUSE;
-				PriaOp = D3DTOP_SELECTARG2;
-				PriaArg1 = D3DTA_TEXTURE;
-				PriaArg2 = D3DTA_DIFFUSE;
+				PricOp = GFX_TOP_SELECTARG2;
+				PricArg1 = GFX_TA_TEXTURE;
+				PricArg2 = GFX_TA_DIFFUSE;
+				PriaOp = GFX_TOP_SELECTARG2;
+				PriaArg1 = GFX_TA_TEXTURE;
+				PriaArg2 = GFX_TA_DIFFUSE;
 				break;
 			case ShaderClass::GRADIENT_ADD:
-				PricOp = D3DTOP_SELECTARG2;
-				PricArg1 = D3DTA_TEXTURE;
-				PricArg2 = D3DTA_DIFFUSE;
-				PriaOp = D3DTOP_SELECTARG2;
-				PriaArg1 = D3DTA_TEXTURE;
-				PriaArg2 = D3DTA_DIFFUSE;
+				PricOp = GFX_TOP_SELECTARG2;
+				PricArg1 = GFX_TA_TEXTURE;
+				PricArg2 = GFX_TA_DIFFUSE;
+				PriaOp = GFX_TOP_SELECTARG2;
+				PriaArg1 = GFX_TA_TEXTURE;
+				PriaArg2 = GFX_TA_DIFFUSE;
 				break;
 			}
 		}
@@ -699,9 +699,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILCOLOR_DETAIL:
 				if(TextureOpCaps & D3DTEXOPCAPS_SELECTARG1)
 				{
-					SeccOp = D3DTOP_SELECTARG1;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_SELECTARG1;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: SELECTARG1"));
@@ -711,9 +711,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILCOLOR_SCALE:
 				if(TextureOpCaps & D3DTEXOPCAPS_MODULATE)
 				{
-					SeccOp = D3DTOP_MODULATE;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_MODULATE;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: MODULATE"));
@@ -723,13 +723,13 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILCOLOR_INVSCALE:
 				if(TextureOpCaps & D3DTEXOPCAPS_ADDSMOOTH)
 				{
-					SeccOp = D3DTOP_ADDSMOOTH;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADDSMOOTH;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				} else if(TextureOpCaps & D3DTEXOPCAPS_ADD) {
-					SeccOp = D3DTOP_ADD;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADD;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: ADDSMOOTH"));
@@ -739,9 +739,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILCOLOR_ADD:
 				if(TextureOpCaps & D3DTEXOPCAPS_ADD)
 				{
-					SeccOp = D3DTOP_ADD;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADD;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: ADD"));
@@ -751,9 +751,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILCOLOR_SUB:
 				if(TextureOpCaps & D3DTEXOPCAPS_SUBTRACT)
 				{
-					SeccOp = D3DTOP_SUBTRACT;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_SUBTRACT;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: SUBTRACT"));
@@ -763,9 +763,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILCOLOR_SUBR:
 				if(TextureOpCaps & D3DTEXOPCAPS_SUBTRACT)
 				{
-					SeccOp = D3DTOP_SUBTRACT;
-					SeccArg1 = D3DTA_CURRENT;
-					SeccArg2 = D3DTA_TEXTURE;
+					SeccOp = GFX_TOP_SUBTRACT;
+					SeccArg1 = GFX_TA_CURRENT;
+					SeccArg2 = GFX_TA_TEXTURE;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: SUBTRACT"));
@@ -775,9 +775,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILCOLOR_BLEND:
 				if(TextureOpCaps & D3DTEXOPCAPS_BLENDTEXTUREALPHA)
 				{
-					SeccOp = D3DTOP_BLENDTEXTUREALPHA;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_BLENDTEXTUREALPHA;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: BLENDTEXTUREALPHA"));
@@ -787,9 +787,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILCOLOR_DETAILBLEND:
 				if(TextureOpCaps & D3DTEXOPCAPS_BLENDCURRENTALPHA)
 				{
-					SeccOp = D3DTOP_BLENDCURRENTALPHA;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_BLENDCURRENTALPHA;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: BLENDCURRENTALPHA"));
@@ -798,13 +798,13 @@ void ShaderClass::Apply()
 
 			case ShaderClass::DETAILCOLOR_ADDSIGNED:
 				if (TextureOpCaps & D3DTEXOPCAPS_ADDSIGNED) {
-					SeccOp = D3DTOP_ADDSIGNED;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADDSIGNED;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}  else if (TextureOpCaps & D3DTEXOPCAPS_ADD) {
-					SeccOp = D3DTOP_ADD;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADD;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				} else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: ADDSIGNED"));
 				}
@@ -812,17 +812,17 @@ void ShaderClass::Apply()
 
 			case ShaderClass::DETAILCOLOR_ADDSIGNED2X:
 				if (TextureOpCaps & D3DTEXOPCAPS_ADDSIGNED2X) {
-					SeccOp = D3DTOP_ADDSIGNED2X;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADDSIGNED2X;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				} else if (TextureOpCaps & D3DTEXOPCAPS_ADDSIGNED) {
-					SeccOp = D3DTOP_ADDSIGNED;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADDSIGNED;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}  else if (TextureOpCaps & D3DTEXOPCAPS_ADD) {
-					SeccOp = D3DTOP_ADD;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADD;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				} else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: ADDSIGNED2X"));
 				}
@@ -830,13 +830,13 @@ void ShaderClass::Apply()
 
 			case ShaderClass::DETAILCOLOR_SCALE2X:
 				if(TextureOpCaps & D3DTEXOPCAPS_MODULATE2X) {
-					SeccOp = D3DTOP_MODULATE2X;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_MODULATE2X;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				} else if(TextureOpCaps & D3DTEXOPCAPS_MODULATE) {
-					SeccOp = D3DTOP_MODULATE;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_MODULATE;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: MODULATE2X"));
@@ -845,13 +845,13 @@ void ShaderClass::Apply()
 
 			case ShaderClass::DETAILCOLOR_MODALPHAADDCOLOR:
 				if (DX8Wrapper::Get_Current_Caps()->Support_ModAlphaAddClr()) {
-					SeccOp = D3DTOP_MODULATEALPHA_ADDCOLOR;
-					SeccArg1 = D3DTA_CURRENT;
-					SeccArg2 = D3DTA_TEXTURE;
+					SeccOp = GFX_TOP_MODULATEALPHA_ADDCOLOR;
+					SeccArg1 = GFX_TA_CURRENT;
+					SeccArg2 = GFX_TA_TEXTURE;
 				} else if (TextureOpCaps & D3DTEXOPCAPS_ADD) {
-					SeccOp = D3DTOP_ADD;
-					SeccArg1 = D3DTA_TEXTURE;
-					SeccArg2 = D3DTA_CURRENT;
+					SeccOp = GFX_TOP_ADD;
+					SeccArg1 = GFX_TA_TEXTURE;
+					SeccArg2 = GFX_TA_CURRENT;
 				} else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: MODULATEALPHA_ADDCOLOR"));
 				}
@@ -867,9 +867,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILALPHA_DETAIL:
 				if(TextureOpCaps & D3DTEXOPCAPS_SELECTARG1)
 				{
-					SecaOp = D3DTOP_SELECTARG1;
-					SecaArg1 = D3DTA_TEXTURE;
-					SecaArg2 = D3DTA_CURRENT;
+					SecaOp = GFX_TOP_SELECTARG1;
+					SecaArg1 = GFX_TA_TEXTURE;
+					SecaArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: SELECTARG1"));
@@ -879,9 +879,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILALPHA_SCALE:
 				if(TextureOpCaps & D3DTEXOPCAPS_MODULATE)
 				{
-					SecaOp = D3DTOP_MODULATE;
-					SecaArg1 = D3DTA_TEXTURE;
-					SecaArg2 = D3DTA_CURRENT;
+					SecaOp = GFX_TOP_MODULATE;
+					SecaArg1 = GFX_TA_TEXTURE;
+					SecaArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: MODULATE"));
@@ -891,9 +891,9 @@ void ShaderClass::Apply()
 			case ShaderClass::DETAILALPHA_INVSCALE:
 				if(TextureOpCaps & D3DTEXOPCAPS_ADDSMOOTH)
 				{
-					SecaOp = D3DTOP_ADDSMOOTH;
-					SecaArg1 = D3DTA_TEXTURE;
-					SecaArg2 = D3DTA_CURRENT;
+					SecaOp = GFX_TOP_ADDSMOOTH;
+					SecaArg1 = GFX_TA_TEXTURE;
+					SecaArg2 = GFX_TA_CURRENT;
 				}
 				else {
 					SNAPSHOT_SAY(("Warning: Using unsupported texture op: ADDSMOOTH"));
@@ -902,12 +902,12 @@ void ShaderClass::Apply()
 			}
 
 			// if color is enabled and alpha is disabled set to pass alpha through
-			if ((SeccOp!=D3DTOP_DISABLE) && (SecaOp==D3DTOP_DISABLE)) {
-				SecaOp = D3DTOP_SELECTARG2;
-				SecaArg2 = D3DTA_CURRENT;
-			} else if ((SeccOp==D3DTOP_DISABLE) && (SecaOp!=D3DTOP_DISABLE)) {
-				SeccOp = D3DTOP_SELECTARG2;
-				SeccArg2 = D3DTA_CURRENT;
+			if ((SeccOp!=GFX_TOP_DISABLE) && (SecaOp==GFX_TOP_DISABLE)) {
+				SecaOp = GFX_TOP_SELECTARG2;
+				SecaArg2 = GFX_TA_CURRENT;
+			} else if ((SeccOp==GFX_TOP_DISABLE) && (SecaOp!=GFX_TOP_DISABLE)) {
+				SeccOp = GFX_TOP_SELECTARG2;
+				SeccArg2 = GFX_TA_CURRENT;
 			}
 		}
 	}
@@ -918,46 +918,46 @@ void ShaderClass::Apply()
 	if (diff & pri_mask) {
 		// for voodoo3 supported blend modes, the stage 0 color and alpha are both diffuse
 		// or both not, so we can check for color diffuse only
-		if ( voodoo3 && (PricArg2==D3DTA_DIFFUSE) &&
-			  ( (SecaOp!=D3DTOP_DISABLE) || (SeccOp!=D3DTOP_DISABLE) )
+		if ( voodoo3 && (PricArg2==GFX_TA_DIFFUSE) &&
+			  ( (SecaOp!=GFX_TOP_DISABLE) || (SeccOp!=GFX_TOP_DISABLE) )
 			) {
 			// Special Voodoo3 code
 			// If stage 0 has a diffuse input
 			// and stage 1 has an input put the diffuse in stage 2
 
-			DWORD tex_arg=D3DTA_CURRENT;
+			DWORD tex_arg=GFX_TA_CURRENT;
 			if(Get_Texturing() == ShaderClass::TEXTURING_ENABLE) {
-				tex_arg=D3DTA_TEXTURE;
+				tex_arg=GFX_TA_TEXTURE;
 			}
 
 			// this is for the bad case of using
 			// stage 0 for diffuse only
-			if ((PricOp==D3DTOP_SELECTARG1)&&(PricArg1==D3DTA_DIFFUSE)) {
+			if ((PricOp==GFX_TOP_SELECTARG1)&&(PricArg1==GFX_TA_DIFFUSE)) {
 				WWDEBUG_SAY(("Wasted Stage 0 in shader-vertex diffuse only"));
 				// set stage 0 to disable
-				DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLOROP,D3DTOP_DISABLE);
-				DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAOP,D3DTOP_DISABLE);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLOROP,GFX_TOP_DISABLE);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_ALPHAOP,GFX_TOP_DISABLE);
 				// set stage 1 to accept diffuse
-				if (SeccArg2==D3DTA_CURRENT) SeccArg2=D3DTA_DIFFUSE;
-				if (SecaArg2==D3DTA_CURRENT) SecaArg2=D3DTA_DIFFUSE;
+				if (SeccArg2==GFX_TA_CURRENT) SeccArg2=GFX_TA_DIFFUSE;
+				if (SecaArg2==GFX_TA_CURRENT) SecaArg2=GFX_TA_DIFFUSE;
 				// and nuke stage 2
 				kill_stage_2=true;
 			} else {
 				// set stage 0 to pass through what it needs
-				DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);
-				DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLORARG1,tex_arg);
-				DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG1);
-				DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAARG1,tex_arg);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLOROP,GFX_TOP_SELECTARG1);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLORARG1,tex_arg);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_ALPHAOP,GFX_TOP_SELECTARG1);
+				DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_ALPHAARG1,tex_arg);
 
 				// set stage 2 to do the diffuse op
 				// bypass the wrapper since it only supports 2 texture stages
-				DX8CALL(SetTextureStageState(2,D3DTSS_COLOROP,PricOp));
-				DX8CALL(SetTextureStageState(2,D3DTSS_COLORARG1,D3DTA_CURRENT));
-				DX8CALL(SetTextureStageState(2,D3DTSS_COLORARG2,D3DTA_DIFFUSE));
-				DX8CALL(SetTextureStageState(2,D3DTSS_ALPHAOP,PriaOp));
-				DX8CALL(SetTextureStageState(2,D3DTSS_ALPHAARG1,D3DTA_CURRENT));
-				DX8CALL(SetTextureStageState(2,D3DTSS_ALPHAARG2,D3DTA_DIFFUSE));
-				DX8CALL(SetTextureStageState(2,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_PASSTHRU));
+				DX8CALL(SetTextureStageState(2,GFX_TSS_COLOROP,PricOp));
+				DX8CALL(SetTextureStageState(2,GFX_TSS_COLORARG1,GFX_TA_CURRENT));
+				DX8CALL(SetTextureStageState(2,GFX_TSS_COLORARG2,GFX_TA_DIFFUSE));
+				DX8CALL(SetTextureStageState(2,GFX_TSS_ALPHAOP,PriaOp));
+				DX8CALL(SetTextureStageState(2,GFX_TSS_ALPHAARG1,GFX_TA_CURRENT));
+				DX8CALL(SetTextureStageState(2,GFX_TSS_ALPHAARG2,GFX_TA_DIFFUSE));
+				DX8CALL(SetTextureStageState(2,GFX_TSS_TEXCOORDINDEX,GFX_TSS_TCI_PASSTHRU));
 				DX8CALL(SetTexture(2,nullptr));
 				kill_stage_2=false;
 				ShaderDirty=true;
@@ -968,28 +968,28 @@ void ShaderClass::Apply()
 #if 0
 			if (WW3D::Is_Coloring_Enabled())
 			{
-				cArg2=aArg2=D3DTA_TFACTOR;
-				cOp=aOp=D3DTOP_SELECTARG2;
+				cArg2=aArg2=GFX_TA_TFACTOR;
+				cOp=aOp=GFX_TOP_SELECTARG2;
 			}
 #endif
-			DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLOROP,PricOp);
-			DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLORARG1,PricArg1);
-			DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLORARG2,PricArg2);
-			DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAOP,PriaOp);
-			DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAARG1,PriaArg1);
-			DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAARG2,PriaArg2);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLOROP,PricOp);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLORARG1,PricArg1);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLORARG2,PricArg2);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_ALPHAOP,PriaOp);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_ALPHAARG1,PriaArg1);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_ALPHAARG2,PriaArg2);
 			kill_stage_2=true;
 		}
 		diff &= ~(ShaderClass::MASK_PRIGRADIENT);
 	}
 
 	if (diff & sec_mask) {
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_COLOROP,SeccOp);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_COLORARG1,SeccArg1);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_COLORARG2,SeccArg2);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_ALPHAOP,SecaOp);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_ALPHAARG1,SecaArg1);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_ALPHAARG2,SecaArg2);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(1,GFX_TSS_COLOROP,SeccOp);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(1,GFX_TSS_COLORARG1,SeccArg1);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(1,GFX_TSS_COLORARG2,SeccArg2);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(1,GFX_TSS_ALPHAOP,SecaOp);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(1,GFX_TSS_ALPHAARG1,SecaArg1);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(1,GFX_TSS_ALPHAARG2,SecaArg2);
 		diff &= ~(ShaderClass::MASK_POSTDETAILCOLORFUNC);
 		diff &= ~(ShaderClass::MASK_POSTDETAILALPHAFUNC);
 		diff &= ~(ShaderClass::MASK_TEXTURING);
@@ -999,45 +999,45 @@ void ShaderClass::Apply()
 	// stage 2
 	// bypass the wrapper since it only supports 2 texture stages
 	if (voodoo3 && kill_stage_2) {
-		if ((SeccOp!=D3DTOP_DISABLE)&&(SecaOp!=D3DTOP_DISABLE)) {
-			DX8CALL(SetTextureStageState(2,D3DTSS_COLOROP,D3DTOP_SELECTARG1));
-			DX8CALL(SetTextureStageState(2,D3DTSS_COLORARG1,D3DTA_CURRENT));
-			DX8CALL(SetTextureStageState(2,D3DTSS_ALPHAOP,D3DTOP_SELECTARG1));
-			DX8CALL(SetTextureStageState(2,D3DTSS_ALPHAARG1,D3DTA_CURRENT));
+		if ((SeccOp!=GFX_TOP_DISABLE)&&(SecaOp!=GFX_TOP_DISABLE)) {
+			DX8CALL(SetTextureStageState(2,GFX_TSS_COLOROP,GFX_TOP_SELECTARG1));
+			DX8CALL(SetTextureStageState(2,GFX_TSS_COLORARG1,GFX_TA_CURRENT));
+			DX8CALL(SetTextureStageState(2,GFX_TSS_ALPHAOP,GFX_TOP_SELECTARG1));
+			DX8CALL(SetTextureStageState(2,GFX_TSS_ALPHAARG1,GFX_TA_CURRENT));
 		} else {
-			DX8CALL(SetTextureStageState(2,D3DTSS_COLOROP,D3DTOP_DISABLE));
-			DX8CALL(SetTextureStageState(2,D3DTSS_ALPHAOP,D3DTOP_DISABLE));
+			DX8CALL(SetTextureStageState(2,GFX_TSS_COLOROP,GFX_TOP_DISABLE));
+			DX8CALL(SetTextureStageState(2,GFX_TSS_ALPHAOP,GFX_TOP_DISABLE));
 		}
-		DX8CALL(SetTextureStageState(2,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_PASSTHRU));
+		DX8CALL(SetTextureStageState(2,GFX_TSS_TEXCOORDINDEX,GFX_TSS_TCI_PASSTHRU));
 		DX8CALL(SetTexture(2,nullptr));
 	}
 
 	if(!diff)
 		return;
 
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_SPECULARENABLE,BOOL(Get_Secondary_Gradient()));
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_SPECULARENABLE,BOOL(Get_Secondary_Gradient()));
 
 	// DEPTH COMPARE FUNCTION
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZFUNC,D3DCMPFUNC(int(Get_Depth_Compare())+1));
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ZFUNC,D3DCMPFUNC(int(Get_Depth_Compare())+1));
 
 	// DEPTH MASK
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE,BOOL(Get_Depth_Mask()));
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ZWRITEENABLE,BOOL(Get_Depth_Mask()));
 
 	// DITHERING
-//	DX8Wrapper::Set_DX8_Render_State(D3DRS_DITHERENABLE,BOOL(Get_Dither_Mask()));
+//	DX8Wrapper::Set_DX8_Render_State(GFX_RS_DITHERENABLE,BOOL(Get_Dither_Mask()));
 
 	// CULLMODE
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE,Get_Cull_Mode() ? _PolygonCullMode : D3DCULL_NONE);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_CULLMODE,Get_Cull_Mode() ? _PolygonCullMode : GFX_CULL_NONE);
 
 	// NPATCHES
 	if (diff&ShaderClass::MASK_NPATCHENABLE) {
 		float level=1.0f;
 		if (Get_NPatch_Enable()) level=float(WW3D::Get_NPatches_Level());
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_PATCHSEGMENTS,*((DWORD*)&level));
+		DX8Wrapper::Set_DX8_Render_State(GFX_RS_PATCHSEGMENTS,*((DWORD*)&level));
 	}
 
 	// Enable/disable alpha test
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHATESTENABLE,BOOL(Get_Alpha_Test()));
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHATESTENABLE,BOOL(Get_Alpha_Test()));
 
 	// Enable/disable stencil test
 	// Not supported yet
@@ -1059,9 +1059,9 @@ void ShaderClass::Apply()
 void ShaderClass::Invert_Backface_Culling(bool onoff)
 {
 	if (onoff == true) {
-		_PolygonCullMode = D3DCULL_CCW;
+		_PolygonCullMode = GFX_CULL_CCW;
 	} else {
-		_PolygonCullMode = D3DCULL_CW;
+		_PolygonCullMode = GFX_CULL_CW;
 	}
 	Invalidate();
 }
@@ -1158,7 +1158,7 @@ int ShaderClass::Guess_Sort_Level() const
  *=============================================================================================*/
 bool ShaderClass::Is_Backface_Culling_Inverted()
 {
-	return (_PolygonCullMode == D3DCULL_CCW);
+	return (_PolygonCullMode == GFX_CULL_CCW);
 }
 
 StringClass ShaderClass::Get_Description() const

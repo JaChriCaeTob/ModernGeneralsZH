@@ -329,7 +329,7 @@ void W3DStatusCircle::Render(RenderInfoClass & rinfo)
 
 		tm.Set_Translation(vec);
 
-		DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
+		DX8Wrapper::Set_Transform(GFX_TS_WORLD,tm);
 		DX8Wrapper::Draw_Triangles(	0,NUM_TRI, 0,	(m_numTriangles*3));
 	}
 
@@ -350,7 +350,7 @@ void W3DStatusCircle::Render(RenderInfoClass & rinfo)
 	Int clr = 255*intensity;
 	Int diffuse = (0xff<<24)|(clr<<16)|(clr<<8)|clr;	 // b g<<8 r<<16 a<<24.
 	updateScreenVB(diffuse);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,tm);
 	DX8Wrapper::Set_Shader(ShaderClass(SC_ADD));
 	DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferScreen);
 	DX8Wrapper::Apply_Render_State_Changes();
@@ -360,21 +360,21 @@ void W3DStatusCircle::Render(RenderInfoClass & rinfo)
 			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
 			break;
 		case ScriptEngine::FADE_SUBTRACT:
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_BLENDOP, D3DBLENDOP_REVSUBTRACT );
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_BLENDOP, GFX_BLENDOP_REVSUBTRACT );
 			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_BLENDOP, D3DBLENDOP_ADD );
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_BLENDOP, GFX_BLENDOP_ADD );
 			break;
 		case ScriptEngine::FADE_SATURATE:
 			// 4x multiply
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND,D3DBLEND_DESTCOLOR);
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_DESTBLEND,D3DBLEND_SRCCOLOR);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_SRCBLEND,GFX_BLEND_DESTCOLOR);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_DESTBLEND,GFX_BLEND_SRCCOLOR);
 			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
 			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
 			break;
 		case ScriptEngine::FADE_MULTIPLY:
 			// Straight multiply
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND,D3DBLEND_ZERO);
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_DESTBLEND,D3DBLEND_SRCCOLOR);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_SRCBLEND,GFX_BLEND_ZERO);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_DESTBLEND,GFX_BLEND_SRCCOLOR);
 			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
 			break;
 	}

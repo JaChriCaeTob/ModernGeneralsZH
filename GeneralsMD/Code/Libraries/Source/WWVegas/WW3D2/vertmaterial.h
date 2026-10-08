@@ -86,9 +86,9 @@ public:
 	};
 
 	enum ColorSourceType {
-		MATERIAL = 0,				// D3DMCS_MATERIAL - the color source should be taken from the material setting
-		COLOR1,						// D3DMCS_COLOR1 - the color should be taken from per-vertex color array 1 (aka D3DFVF_DIFFUSE)
-		COLOR2,						// D3DMCS_COLOR2 - the color should be taken from per-vertex color array 2 (aka D3DFVF_SPECULAR)
+		MATERIAL = 0,				// GFX_MCS_MATERIAL - the color source should be taken from the material setting
+		COLOR1,						// GFX_MCS_COLOR1 - the color should be taken from per-vertex color array 1 (aka D3DFVF_DIFFUSE)
+		COLOR2,						// GFX_MCS_COLOR2 - the color should be taken from per-vertex color array 2 (aka D3DFVF_SPECULAR)
 	};
 
 	enum PresetType

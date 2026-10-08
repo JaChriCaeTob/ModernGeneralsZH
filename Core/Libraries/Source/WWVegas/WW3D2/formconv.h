@@ -41,6 +41,7 @@
 
 #include "ww3dformat.h"
 #include <d3d8.h>
+#include "gfx_d3d8_map.h"
 
 /*
 ** This file is used for conversions between D3DFORMAT and WW3DFormat.

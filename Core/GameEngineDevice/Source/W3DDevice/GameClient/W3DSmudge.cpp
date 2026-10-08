@@ -266,7 +266,7 @@ Bool W3DSmudgeManager::testHardwareSupport()
 		//not worth bothering with index/vertex buffers.
 		DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
 
-		DX8Wrapper::Raw_Draw_Primitive_UP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(_TRANS_LIT_TEX_VERTEX));
+		DX8Wrapper::Raw_Draw_Primitive_UP(GFX_PT_TRIANGLESTRIP, 2, v, sizeof(_TRANS_LIT_TEX_VERTEX));
 
 		DWORD refData[BLOCK_SIZE*BLOCK_SIZE];
 		memset(refData,0,sizeof(refData));
@@ -287,7 +287,7 @@ Bool W3DSmudgeManager::testHardwareSupport()
 		v[2].color = 0xffffffff;
 		v[3].color = 0xffffffff;
 
-		DX8Wrapper::Raw_Draw_Primitive_UP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(_TRANS_LIT_TEX_VERTEX));
+		DX8Wrapper::Raw_Draw_Primitive_UP(GFX_PT_TRIANGLESTRIP, 2, v, sizeof(_TRANS_LIT_TEX_VERTEX));
 		bufSize=copyRect((unsigned char *)testData,sizeof(testData),0,0,BLOCK_SIZE,BLOCK_SIZE);
 
 		if (!bufSize)
@@ -445,8 +445,8 @@ void W3DSmudgeManager::render(RenderInfoClass &rinfo)
 	REF_PTR_RELEASE(backBuffer);
 
 	Matrix4x4 identity(true);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,identity);
-	DX8Wrapper::Set_Transform(D3DTS_VIEW,identity);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,identity);
+	DX8Wrapper::Set_Transform(GFX_TS_VIEW,identity);
 
 	DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
 	//DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaqueSpriteShader);
@@ -455,20 +455,20 @@ void W3DSmudgeManager::render(RenderInfoClass &rinfo)
 
 	DX8Wrapper::Set_Texture(0,m_backgroundTexture);
 	//Need these states in case texture is non-power-of-2
-	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
-	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
-	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_ADDRESSW, D3DTADDRESS_CLAMP);
-	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
-	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
-	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_MIPFILTER, D3DTEXF_NONE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_ADDRESSU, GFX_TADDRESS_CLAMP);
+	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_ADDRESSV, GFX_TADDRESS_CLAMP);
+	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_ADDRESSW, GFX_TADDRESS_CLAMP);
+	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_MAGFILTER, GFX_TEXF_LINEAR);
+	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_MINFILTER, GFX_TEXF_LINEAR);
+	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, GFX_TSS_MIPFILTER, GFX_TEXF_NONE);
 	VertexMaterialClass *vmat=VertexMaterialClass::Get_Preset(VertexMaterialClass::PRELIT_DIFFUSE);
 	DX8Wrapper::Set_Material(vmat);
 	REF_PTR_RELEASE(vmat);
 	DX8Wrapper::Apply_Render_State_Changes();
 
 	//Disable reading texture alpha since it's undefined.
-	//DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG2);
+	//DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLOROP,GFX_TOP_SELECTARG1);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_ALPHAOP,GFX_TOP_SELECTARG2);
 
 	Int smudgesRemaining=count;
 	setIt=m_usedSmudgeSetList.begin();	//first smudge set that needs rendering.
@@ -545,18 +545,18 @@ flushSmudges:
 		DX8Wrapper::Draw_Triangles(0,smudgesInRenderBatch*4, 0, smudgesInRenderBatch*5);
 
 //Debug Code which draws outline around smudge
-/*		DX8Wrapper::Raw_Set_Render_State(D3DRS_FILLMODE,D3DFILL_WIREFRAME);
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHABLENDENABLE,FALSE);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLOROP,D3DTOP_SELECTARG2);
+/*		DX8Wrapper::Raw_Set_Render_State(GFX_RS_FILLMODE,GFX_FILL_WIREFRAME);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHABLENDENABLE,FALSE);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLOROP,GFX_TOP_SELECTARG2);
 		DX8Wrapper::Draw_Triangles(	0,smudgesInRenderBatch*4, 0, smudgesInRenderBatch*5);
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_FILLMODE,D3DFILL_SOLID);
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHABLENDENABLE,TRUE);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLOROP,D3DTOP_SELECTARG1);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_FILLMODE,GFX_FILL_SOLID);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHABLENDENABLE,TRUE);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLOROP,GFX_TOP_SELECTARG1);
 */
 		smudgesRemaining -= smudgesInRenderBatch;
 	}
 
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLOROP,D3DTOP_MODULATE);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAOP,D3DTOP_MODULATE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_COLOROP,GFX_TOP_MODULATE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0,GFX_TSS_ALPHAOP,GFX_TOP_MODULATE);
 
 }

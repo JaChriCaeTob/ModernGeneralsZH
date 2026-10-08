@@ -488,39 +488,39 @@ Int W3DProjectedShadowManager::renderProjectedTerrainShadow(W3DProjectedShadow *
 
 		DX8Wrapper::Raw_Set_Indices(shadowIndexBufferD3D,nShadowStartBatchVertex);
 
-		DX8Wrapper::Raw_Set_Transform(D3DTS_WORLD,(_D3DMATRIX *)&mWorld);
+		DX8Wrapper::Raw_Set_Transform(GFX_TS_WORLD,(_D3DMATRIX *)&mWorld);
 
 		DX8Wrapper::Raw_Set_Stream_Source(0,shadowVertexBufferD3D,sizeof(SHADOW_VOLUME_VERTEX));
 		DX8Wrapper::Raw_Set_Vertex_Shader(SHADOW_VOLUME_FVF);
 
 		Int numPolys = (endX - startX)*(endY - startY)*2;	//2 triangles per cell
 
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHATESTENABLE, TRUE);	//should reject background pixels
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILENABLE, TRUE );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILFUNC,     D3DCMP_ALWAYS );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILREF,      0x1 );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILMASK,     0xffffffff );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILWRITEMASK,0xffffffff );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILFAIL,  D3DSTENCILOP_KEEP );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILPASS,  D3DSTENCILOP_INCR );
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHATESTENABLE, TRUE);	//should reject background pixels
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILENABLE, TRUE );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILFUNC,     GFX_CMP_ALWAYS );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILREF,      0x1 );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILMASK,     0xffffffff );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILWRITEMASK,0xffffffff );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILZFAIL, GFX_STENCILOP_KEEP );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILFAIL,  GFX_STENCILOP_KEEP );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILPASS,  GFX_STENCILOP_INCR );
 
-//    DX8Wrapper::Raw_Set_Render_State( D3DRS_ALPHABLENDENABLE, FALSE );	//useful to see bounds
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_LIGHTING, FALSE);
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_SRCBLEND,  D3DBLEND_DESTCOLOR);
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_DESTBLEND, D3DBLEND_ZERO );
+//    DX8Wrapper::Raw_Set_Render_State( GFX_RS_ALPHABLENDENABLE, FALSE );	//useful to see bounds
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_LIGHTING, FALSE);
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_SRCBLEND,  GFX_BLEND_DESTCOLOR);
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_DESTBLEND, GFX_BLEND_ZERO );
 
 
 		if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
 		{
 			Debug_Statistics::Record_DX8_Polys_And_Vertices(numPolys,numVerts,ShaderClass::_PresetOpaqueShader);
-			DX8Wrapper::Raw_Draw_Indexed_Primitive(D3DPT_TRIANGLELIST,0,numVerts,nShadowStartBatchIndex,numPolys);
+			DX8Wrapper::Raw_Draw_Indexed_Primitive(GFX_PT_TRIANGLELIST,0,numVerts,nShadowStartBatchIndex,numPolys);
 		}
 
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHATESTENABLE, FALSE);	//should reject background pixels
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILENABLE, FALSE );
-//    DX8Wrapper::Raw_Set_Render_State( D3DRS_ALPHABLENDENABLE, TRUE );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_LIGHTING, TRUE);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHATESTENABLE, FALSE);	//should reject background pixels
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILENABLE, FALSE );
+//    DX8Wrapper::Raw_Set_Render_State( GFX_RS_ALPHABLENDENABLE, TRUE );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_LIGHTING, TRUE);
 
 		nShadowVertsInBuf += numVerts;
 		nShadowStartBatchVertex=nShadowVertsInBuf;
@@ -631,9 +631,9 @@ static void RenderVBTile(TextureClass *text, Real ox, Real oy, Real ou, Real ov,
 	DX8Wrapper::Set_Index_Buffer(ib_access,0);
 	DX8Wrapper::Set_Vertex_Buffer(vb_access);
 	DX8Wrapper::Set_Texture(0, text);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA );
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA  );
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE, TRUE );
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_SRCBLEND,  GFX_BLEND_SRCALPHA );
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_DESTBLEND, GFX_BLEND_INVSRCALPHA  );
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHABLENDENABLE, TRUE );
 	ShaderClass::Invalidate();	//invalidate to force shader to reset since we directly changed states
 	DX8Wrapper::Draw_Triangles(	0,2, 0,	4);	//draw a quad, 2 triangles, 4 verts
 }
@@ -656,7 +656,7 @@ void TestBlendRender(RenderInfoClass & rinfo)
 	DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaqueShader);
 
 	Matrix3D tm(1);	//identity
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,tm);
 
 	//grass
 	RenderVBTile(grass,580.0f,480.0f,0.0f,0.0f);	RenderVBTile(grass,590.0f,480.0f,0.25f,0.0f);
@@ -709,70 +709,70 @@ void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowTyp
 			break;
 	}
 
-//	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,0x60);
-//	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAFUNC,D3DCMP_GREATEREQUAL);
+//	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHAREF,0x60);
+//	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHAFUNC,GFX_CMP_GREATEREQUAL);
 	//_PresetAlphaSpriteShader
 
 	DX8Wrapper::Apply_Render_State_Changes();	//force update of view and projection matrices
 
 //Alpha Blended Shadows
-//	DX8Wrapper::Raw_Set_Render_State( D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA );
-//	DX8Wrapper::Raw_Set_Render_State( D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA  );
+//	DX8Wrapper::Raw_Set_Render_State( GFX_RS_SRCBLEND,  GFX_BLEND_SRCALPHA );
+//	DX8Wrapper::Raw_Set_Render_State( GFX_RS_DESTBLEND, GFX_BLEND_INVSRCALPHA  );
 /*	UnsignedInt color=TheW3DShadowManager->getShadowColor();
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_TEXTUREFACTOR, 0xff000000 | color);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_TEXTUREFACTOR, 0xff000000 | color);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_COLOROP, GFX_TOP_MODULATE);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_COLORARG1, GFX_TA_TEXTURE);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_COLORARG2, GFX_TA_TFACTOR);
 
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_ALPHAARG2, D3DTA_TFACTOR);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_ALPHAOP, GFX_TOP_MODULATE);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_ALPHAARG1, GFX_TA_TEXTURE);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_ALPHAARG2, GFX_TA_TFACTOR);
 */
 
 
 	DX8Wrapper::Raw_Set_Indices(shadowDecalIndexBufferD3D,nShadowDecalStartBatchVertex);
-	DX8Wrapper::Raw_Set_Transform(D3DTS_WORLD,(_D3DMATRIX *)&mWorld);
+	DX8Wrapper::Raw_Set_Transform(GFX_TS_WORLD,(_D3DMATRIX *)&mWorld);
 
 	DX8Wrapper::Raw_Set_Stream_Source(0,shadowDecalVertexBufferD3D,sizeof(SHADOW_DECAL_VERTEX));
 	DX8Wrapper::Raw_Set_Vertex_Shader(SHADOW_DECAL_FVF);
 
 //Hard Shadows using stencil
-/*	DX8Wrapper::Raw_Set_Render_State( D3DRS_SRCBLEND,  D3DBLEND_ZERO);
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_DESTBLEND, D3DBLEND_ONE );
-	DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHATESTENABLE, TRUE);	//should reject background pixels
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILENABLE, TRUE );
+/*	DX8Wrapper::Raw_Set_Render_State( GFX_RS_SRCBLEND,  GFX_BLEND_ZERO);
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_DESTBLEND, GFX_BLEND_ONE );
+	DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHATESTENABLE, TRUE);	//should reject background pixels
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILENABLE, TRUE );
 */
-/*	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILFUNC,     D3DCMP_ALWAYS );
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILREF,      0x1 );
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILMASK,     0xffffffff );
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILWRITEMASK,0xffffffff );
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP );
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILFAIL,  D3DSTENCILOP_KEEP );
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILPASS,  D3DSTENCILOP_INCR );
+/*	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILFUNC,     GFX_CMP_ALWAYS );
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILREF,      0x1 );
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILMASK,     0xffffffff );
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILWRITEMASK,0xffffffff );
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILZFAIL, GFX_STENCILOP_KEEP );
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILFAIL,  GFX_STENCILOP_KEEP );
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILPASS,  GFX_STENCILOP_INCR );
 */
-//DX8Wrapper::Raw_Set_Render_State( D3DRS_ALPHABLENDENABLE, FALSE );	//useful to see bounds
+//DX8Wrapper::Raw_Set_Render_State( GFX_RS_ALPHABLENDENABLE, FALSE );	//useful to see bounds
 
 	if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
 	{
 		Debug_Statistics::Record_DX8_Polys_And_Vertices(nShadowDecalPolysInBatch,nShadowDecalVertsInBatch,ShaderClass::_PresetOpaqueShader);
-		DX8Wrapper::Raw_Draw_Indexed_Primitive(D3DPT_TRIANGLELIST,0,nShadowDecalVertsInBatch,nShadowDecalStartBatchIndex,nShadowDecalPolysInBatch);
+		DX8Wrapper::Raw_Draw_Indexed_Primitive(GFX_PT_TRIANGLELIST,0,nShadowDecalVertsInBatch,nShadowDecalStartBatchIndex,nShadowDecalPolysInBatch);
 	}
 
-//	DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHATESTENABLE, FALSE);	//should reject background pixels
-//	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILENABLE, FALSE );
-//DX8Wrapper::Raw_Set_Render_State( D3DRS_ALPHABLENDENABLE, TRUE );
+//	DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHATESTENABLE, FALSE);	//should reject background pixels
+//	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILENABLE, FALSE );
+//DX8Wrapper::Raw_Set_Render_State( GFX_RS_ALPHABLENDENABLE, TRUE );
 
 
 	//Restore multiplicative sprite shader
-//	DX8Wrapper::Raw_Set_Render_State(D3DRS_DESTBLEND,D3DBLEND_SRCCOLOR);	//restore W3D state
-//	DX8Wrapper::Raw_Set_Render_State(D3DRS_SRCBLEND, D3DBLEND_ZERO);
+//	DX8Wrapper::Raw_Set_Render_State(GFX_RS_DESTBLEND,GFX_BLEND_SRCCOLOR);	//restore W3D state
+//	DX8Wrapper::Raw_Set_Render_State(GFX_RS_SRCBLEND, GFX_BLEND_ZERO);
 
-/*	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_COLORARG2, D3DTA_CURRENT);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-	DX8Wrapper::Raw_Set_Texture_Stage_State(0, D3DTSS_ALPHAARG2, D3DTA_CURRENT);
+/*	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_COLOROP, GFX_TOP_SELECTARG1);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_COLORARG1, GFX_TA_TEXTURE);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_COLORARG2, GFX_TA_CURRENT);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_ALPHAOP, GFX_TOP_SELECTARG1);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_ALPHAARG1, GFX_TA_TEXTURE);
+	DX8Wrapper::Raw_Set_Texture_Stage_State(0, GFX_TSS_ALPHAARG2, GFX_TA_CURRENT);
 */
 	nShadowDecalStartBatchVertex=nShadowDecalVertsInBuf;
 	nShadowDecalStartBatchIndex=nShadowDecalIndicesInBuf;

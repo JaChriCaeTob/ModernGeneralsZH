@@ -273,7 +273,7 @@ void Line3DClass::Render(RenderInfoClass & rinfo)
 	DX8Wrapper::Set_Material(vm);
 	REF_PTR_RELEASE(vm);
 
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,Transform);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,Transform);
 
 	DynamicVBAccessClass vb(BUFFER_TYPE_DYNAMIC_DX8,dynamic_fvf_type,8);
 	{

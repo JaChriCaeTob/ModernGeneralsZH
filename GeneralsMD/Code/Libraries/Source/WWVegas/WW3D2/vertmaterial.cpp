@@ -76,9 +76,9 @@ VertexMaterialClass::VertexMaterialClass():
 	MaterialOld(nullptr),
 #endif
 	Flags(0),
-	AmbientColorSource(D3DMCS_MATERIAL),
-	EmissiveColorSource(D3DMCS_MATERIAL),
-	DiffuseColorSource(D3DMCS_MATERIAL),
+	AmbientColorSource(GFX_MCS_MATERIAL),
+	EmissiveColorSource(GFX_MCS_MATERIAL),
+	DiffuseColorSource(GFX_MCS_MATERIAL),
 	UseLighting(false),
 	UniqueID(0),
 	CRCDirty(true)
@@ -349,9 +349,9 @@ void	VertexMaterialClass::Set_Ambient_Color_Source(ColorSourceType src)
 	CRCDirty=true;
 	switch (src)
 	{
-	case	COLOR1:		AmbientColorSource = D3DMCS_COLOR1; break;
-	case	COLOR2:		AmbientColorSource = D3DMCS_COLOR2; break;
-	default:				AmbientColorSource = D3DMCS_MATERIAL; break;
+	case	COLOR1:		AmbientColorSource = GFX_MCS_COLOR1; break;
+	case	COLOR2:		AmbientColorSource = GFX_MCS_COLOR2; break;
+	default:				AmbientColorSource = GFX_MCS_MATERIAL; break;
 	}
 }
 
@@ -360,9 +360,9 @@ void	VertexMaterialClass::Set_Emissive_Color_Source(ColorSourceType src)
 	CRCDirty=true;
 	switch (src)
 	{
-	case	COLOR1:		EmissiveColorSource = D3DMCS_COLOR1; break;
-	case	COLOR2:		EmissiveColorSource = D3DMCS_COLOR2; break;
-	default:				EmissiveColorSource = D3DMCS_MATERIAL; break;
+	case	COLOR1:		EmissiveColorSource = GFX_MCS_COLOR1; break;
+	case	COLOR2:		EmissiveColorSource = GFX_MCS_COLOR2; break;
+	default:				EmissiveColorSource = GFX_MCS_MATERIAL; break;
 	}
 }
 
@@ -371,9 +371,9 @@ void	VertexMaterialClass::Set_Diffuse_Color_Source(ColorSourceType src)
 	CRCDirty=true;
 	switch (src)
 	{
-	case	COLOR1:		DiffuseColorSource = D3DMCS_COLOR1; break;
-	case	COLOR2:		DiffuseColorSource = D3DMCS_COLOR2; break;
-	default:				DiffuseColorSource = D3DMCS_MATERIAL; break;
+	case	COLOR1:		DiffuseColorSource = GFX_MCS_COLOR1; break;
+	case	COLOR2:		DiffuseColorSource = GFX_MCS_COLOR2; break;
+	default:				DiffuseColorSource = GFX_MCS_MATERIAL; break;
 	}
 }
 
@@ -382,8 +382,8 @@ VertexMaterialClass::Get_Ambient_Color_Source()
 {
 	switch(AmbientColorSource)
 	{
-	case D3DMCS_COLOR1:	return COLOR1;
-	case D3DMCS_COLOR2:	return COLOR2;
+	case GFX_MCS_COLOR1:	return COLOR1;
+	case GFX_MCS_COLOR2:	return COLOR2;
 	default:					return MATERIAL;
 	}
 }
@@ -393,8 +393,8 @@ VertexMaterialClass::Get_Emissive_Color_Source()
 {
 	switch(EmissiveColorSource)
 	{
-	case D3DMCS_COLOR1:	return COLOR1;
-	case D3DMCS_COLOR2:	return COLOR2;
+	case GFX_MCS_COLOR1:	return COLOR1;
+	case GFX_MCS_COLOR2:	return COLOR2;
 	default:					return MATERIAL;
 	}
 }
@@ -404,8 +404,8 @@ VertexMaterialClass::Get_Diffuse_Color_Source()
 {
 	switch(DiffuseColorSource)
 	{
-	case D3DMCS_COLOR1:	return COLOR1;
-	case D3DMCS_COLOR2:	return COLOR2;
+	case GFX_MCS_COLOR1:	return COLOR1;
+	case GFX_MCS_COLOR2:	return COLOR2;
 	default:					return MATERIAL;
 	}
 }
@@ -951,20 +951,20 @@ void VertexMaterialClass::Apply() const
 	DX8Wrapper::Set_DX8_Material(Material);
 
 	if (WW3D::Is_Coloring_Enabled())
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING,FALSE);
+		DX8Wrapper::Set_DX8_Render_State(GFX_RS_LIGHTING,FALSE);
 	else
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING,UseLighting);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_AMBIENTMATERIALSOURCE,AmbientColorSource);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_DIFFUSEMATERIALSOURCE,DiffuseColorSource);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_EMISSIVEMATERIALSOURCE,EmissiveColorSource);
+		DX8Wrapper::Set_DX8_Render_State(GFX_RS_LIGHTING,UseLighting);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_AMBIENTMATERIALSOURCE,AmbientColorSource);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_DIFFUSEMATERIALSOURCE,DiffuseColorSource);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_EMISSIVEMATERIALSOURCE,EmissiveColorSource);
 
 	// set to default values if no mappers
 	for (i=0; i<MeshBuilderClass::MAX_STAGES; i++) {
 		if (Mapper[i]) {
 			Mapper[i]->Apply(UVSource[i]);
 		} else {
-			DX8Wrapper::Set_DX8_Texture_Stage_State(i,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_PASSTHRU | UVSource[i]);
-			DX8Wrapper::Set_DX8_Texture_Stage_State(i,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_DISABLE);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(i,GFX_TSS_TEXCOORDINDEX,GFX_TSS_TCI_PASSTHRU | UVSource[i]);
+			DX8Wrapper::Set_DX8_Texture_Stage_State(i,GFX_TSS_TEXTURETRANSFORMFLAGS,GFX_TTFF_DISABLE);
 		}
 	}
 }
@@ -981,17 +981,17 @@ void VertexMaterialClass::Apply_Null()
 		1.0f									// power
 	};
 
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING,FALSE);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_LIGHTING,FALSE);
 	DX8Wrapper::Set_DX8_Material(&default_settings);
 
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_AMBIENTMATERIALSOURCE,D3DMCS_MATERIAL);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_DIFFUSEMATERIALSOURCE,D3DMCS_MATERIAL);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_EMISSIVEMATERIALSOURCE,D3DMCS_MATERIAL);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_AMBIENTMATERIALSOURCE,GFX_MCS_MATERIAL);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_DIFFUSEMATERIALSOURCE,GFX_MCS_MATERIAL);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_EMISSIVEMATERIALSOURCE,GFX_MCS_MATERIAL);
 
 	// set to default values if no mappers
 	for (i=0; i<MeshBuilderClass::MAX_STAGES; i++) {
-		DX8Wrapper::Set_DX8_Texture_Stage_State(i,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_PASSTHRU | i);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(i,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_DISABLE);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(i,GFX_TSS_TEXCOORDINDEX,GFX_TSS_TCI_PASSTHRU | i);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(i,GFX_TSS_TEXTURETRANSFORMFLAGS,GFX_TTFF_DISABLE);
 	}
 }
 

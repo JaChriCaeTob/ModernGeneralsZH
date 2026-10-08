@@ -42,6 +42,7 @@
 #include "WWLib/always.h"
 #include "ww3dformat.h"
 #include <d3d8.h>
+#include "gfx_d3d8_map.h"
 
 class DX8Caps
 {

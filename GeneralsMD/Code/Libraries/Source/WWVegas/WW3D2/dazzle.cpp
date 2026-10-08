@@ -944,8 +944,8 @@ void DazzleRenderObjClass::Render(RenderInfoClass & rinfo)
 //			visibility = _VisibilityHandler->Compute_Dazzle_Visibility(rinfo,this,position);
 
 			Matrix4x4 view_transform,projection_transform;
-			DX8Wrapper::Get_Transform(D3DTS_VIEW,view_transform);
-			DX8Wrapper::Get_Transform(D3DTS_PROJECTION,projection_transform);
+			DX8Wrapper::Get_Transform(GFX_TS_VIEW,view_transform);
+			DX8Wrapper::Get_Transform(GFX_TS_PROJECTION,projection_transform);
 			Vector3 camera_loc(rinfo.Camera.Get_Position());
 			Vector3 camera_dir(-view_transform[2][0],-view_transform[2][1],-view_transform[2][2]);
 //			const Matrix3D& cam = rinfo.Camera.Get_Transform();
@@ -1021,9 +1021,9 @@ void DazzleRenderObjClass::Render_Dazzle(CameraClass* camera)
 	Matrix4x4 view_transform;
 	Matrix4x4 world_transform;
 	Matrix4x4 projection_transform;
-	DX8Wrapper::Get_Transform(D3DTS_VIEW,view_transform);
-	DX8Wrapper::Get_Transform(D3DTS_WORLD,world_transform);
-	DX8Wrapper::Get_Transform(D3DTS_PROJECTION,projection_transform);
+	DX8Wrapper::Get_Transform(GFX_TS_VIEW,view_transform);
+	DX8Wrapper::Get_Transform(GFX_TS_WORLD,world_transform);
+	DX8Wrapper::Get_Transform(GFX_TS_PROJECTION,projection_transform);
 	old_view_transform=view_transform;
 	old_world_transform=world_transform;
 	old_projection_transform=projection_transform;
@@ -1221,7 +1221,7 @@ void DazzleRenderObjClass::Render_Dazzle(CameraClass* camera)
 
 	DX8Wrapper::Set_World_Identity();
 	DX8Wrapper::Set_View_Identity();
-	DX8Wrapper::Set_Transform(D3DTS_PROJECTION,Matrix4x4(true));
+	DX8Wrapper::Set_Transform(GFX_TS_PROJECTION,Matrix4x4(true));
 
 	if (halo_poly_count) {
 		DX8Wrapper::Set_Index_Buffer(ib_access,dazzle_vertex_count);
@@ -1244,9 +1244,9 @@ void DazzleRenderObjClass::Render_Dazzle(CameraClass* camera)
 		DX8Wrapper::Draw_Triangles(0,lensflare_poly_count,0,vertex_count);
 	}
 
-	DX8Wrapper::Set_Transform(D3DTS_PROJECTION,old_projection_transform);
-	DX8Wrapper::Set_Transform(D3DTS_VIEW,old_view_transform);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,old_world_transform);
+	DX8Wrapper::Set_Transform(GFX_TS_PROJECTION,old_projection_transform);
+	DX8Wrapper::Set_Transform(GFX_TS_VIEW,old_view_transform);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,old_world_transform);
 }
 
 // ----------------------------------------------------------------------------

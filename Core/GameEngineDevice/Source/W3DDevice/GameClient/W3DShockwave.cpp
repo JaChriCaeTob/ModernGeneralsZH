@@ -156,25 +156,25 @@ void W3DShockwave::render()
 	DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaqueShader);
 	DX8Wrapper::Set_Texture(0, nullptr);
 	DX8Wrapper::Apply_Render_State_Changes();
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZFUNC, D3DCMP_ALWAYS);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE, FALSE);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE, FALSE);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE, D3DCULL_NONE);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ZFUNC, GFX_CMP_ALWAYS);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ZWRITEENABLE, FALSE);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_ALPHABLENDENABLE, FALSE);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_CULLMODE, GFX_CULL_NONE);
 	DX8Wrapper::Apply_Render_State_Changes();
 
 	// Texture * diffuse * 2, so a diffuse of 0.5 grey leaves the scene unchanged.
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG2);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0, D3DTSS_MIPFILTER, D3DTEXF_NONE);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_COLOROP, GFX_TOP_MODULATE2X);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_COLORARG1, GFX_TA_TEXTURE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_COLORARG2, GFX_TA_DIFFUSE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_ALPHAOP, GFX_TOP_SELECTARG2);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_ALPHAARG2, GFX_TA_DIFFUSE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_ADDRESSU, GFX_TADDRESS_CLAMP);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_ADDRESSV, GFX_TADDRESS_CLAMP);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_MINFILTER, GFX_TEXF_LINEAR);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_MAGFILTER, GFX_TEXF_LINEAR);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0, GFX_TSS_MIPFILTER, GFX_TEXF_NONE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(1, GFX_TSS_COLOROP, GFX_TOP_DISABLE);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(1, GFX_TSS_ALPHAOP, GFX_TOP_DISABLE);
 
 	DX8Wrapper::Raw_Set_Texture(0, g_capture->Peek_D3D_Texture());
 	DX8Wrapper::Raw_Set_Vertex_Shader(kFvf);
@@ -262,7 +262,7 @@ void W3DShockwave::render()
 				indices.push_back(i1); indices.push_back(i2); indices.push_back(i3);
 			}
 
-		DX8Wrapper::Raw_Draw_Indexed_Primitive_UP(D3DPT_TRIANGLELIST, 0, (UINT)verts.size(), (UINT)(indices.size() / 3),
+		DX8Wrapper::Raw_Draw_Indexed_Primitive_UP(GFX_PT_TRIANGLELIST, 0, (UINT)verts.size(), (UINT)(indices.size() / 3),
 			&indices[0], D3DFMT_INDEX16, &verts[0], sizeof(ScreenVertex));
 	}
 

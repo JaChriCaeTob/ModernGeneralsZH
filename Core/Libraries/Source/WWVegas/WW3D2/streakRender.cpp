@@ -311,11 +311,11 @@ void StreakRendererClass::RenderStreak
 )
 {
 	Matrix4x4 view;
-	DX8Wrapper::Get_Transform(D3DTS_VIEW,view);
+	DX8Wrapper::Get_Transform(GFX_TS_VIEW,view);
 
 	Matrix4x4 identity(true);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,identity);
-	DX8Wrapper::Set_Transform(D3DTS_VIEW,identity);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,identity);
+	DX8Wrapper::Set_Transform(GFX_TS_VIEW,identity);
 
 	/*
 	** Handle texture UV offset animation (done once for entire line).
@@ -1383,7 +1383,7 @@ void StreakRendererClass::RenderStreak
 
 	}
 
-	DX8Wrapper::Set_Transform(D3DTS_VIEW,view);
+	DX8Wrapper::Set_Transform(GFX_TS_VIEW,view);
 
 }
 

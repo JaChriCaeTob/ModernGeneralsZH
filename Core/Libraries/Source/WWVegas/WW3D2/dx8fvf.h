@@ -43,6 +43,7 @@
 
 #include "WWLib/always.h"
 #include <d3d8.h>
+#include "gfx_d3d8_map.h"
 #include "WWDebug/wwdebug.h"
 
 class StringClass;

@@ -1362,7 +1362,7 @@ void W3DVolumetricShadow::RenderMeshVolume(Int meshIndex, Int lightIndex, const 
 		return;
 
 	D3DMATRIX dxmWorld = To_D3DMATRIX(*meshXform);
-	DX8Wrapper::Raw_Set_Transform(D3DTS_WORLD,&dxmWorld);
+	DX8Wrapper::Raw_Set_Transform(GFX_TS_WORLD,&dxmWorld);
 
 	W3DBufferManager::W3DVertexBufferSlot *vbSlot=m_shadowVolumeVB[lightIndex][ meshIndex ];
 	if (!vbSlot)
@@ -1386,7 +1386,7 @@ void W3DVolumetricShadow::RenderMeshVolume(Int meshIndex, Int lightIndex, const 
 	if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
 	{
 		Debug_Statistics::Record_DX8_Polys_And_Vertices(numPolys,numVerts,ShaderClass::_PresetOpaqueShader);
-		DX8Wrapper::Raw_Draw_Indexed_Primitive(D3DPT_TRIANGLELIST,0,numVerts,ibSlot->m_start,numPolys);
+		DX8Wrapper::Raw_Draw_Indexed_Primitive(GFX_PT_TRIANGLELIST,0,numVerts,ibSlot->m_start,numPolys);
 	}
 
 }
@@ -1478,7 +1478,7 @@ void W3DVolumetricShadow::RenderDynamicMeshVolume(Int meshIndex, Int lightIndex,
 	DX8Wrapper::Raw_Set_Indices(shadowIndexBufferD3D,nShadowStartBatchVertex);
 
 	D3DMATRIX dxmWorld = To_D3DMATRIX(*meshXform);
-	DX8Wrapper::Raw_Set_Transform(D3DTS_WORLD,&dxmWorld);
+	DX8Wrapper::Raw_Set_Transform(GFX_TS_WORLD,&dxmWorld);
 
 	if (shadowVertexBufferD3D != lastActiveVertexBuffer)
 	{	DX8Wrapper::Raw_Set_Stream_Source(0,shadowVertexBufferD3D,sizeof(SHADOW_DYNAMIC_VOLUME_VERTEX));
@@ -1488,7 +1488,7 @@ void W3DVolumetricShadow::RenderDynamicMeshVolume(Int meshIndex, Int lightIndex,
 	if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
 	{
 		Debug_Statistics::Record_DX8_Polys_And_Vertices(numPolys,numVerts,ShaderClass::_PresetOpaqueShader);
-		DX8Wrapper::Raw_Draw_Indexed_Primitive(D3DPT_TRIANGLELIST,0,numVerts,nShadowStartBatchIndex,numPolys);
+		DX8Wrapper::Raw_Draw_Indexed_Primitive(GFX_PT_TRIANGLELIST,0,numVerts,nShadowStartBatchIndex,numPolys);
 	}
 
 	nShadowVertsInBuf += numVerts;
@@ -1635,12 +1635,12 @@ void W3DVolumetricShadow::RenderMeshVolumeBounds(Int meshIndex, Int lightIndex, 
 	//todo: replace this with mesh transform
 	Matrix4x4 mWorld(1);	//identity since boxes are pre-transformed to world space.
 	D3DMATRIX dxmWorld = To_D3DMATRIX(mWorld);
-	DX8Wrapper::Raw_Set_Transform(D3DTS_WORLD,&dxmWorld);
+	DX8Wrapper::Raw_Set_Transform(GFX_TS_WORLD,&dxmWorld);
 
 	DX8Wrapper::Raw_Set_Stream_Source(0,shadowVertexBufferD3D,sizeof(SHADOW_DYNAMIC_VOLUME_VERTEX));
 	DX8Wrapper::Raw_Set_Vertex_Shader(SHADOW_DYNAMIC_VOLUME_FVF);
 
-	DX8Wrapper::Raw_Draw_Indexed_Primitive(D3DPT_TRIANGLELIST,0,numVerts,nShadowStartBatchIndex,numPolys);
+	DX8Wrapper::Raw_Draw_Indexed_Primitive(GFX_PT_TRIANGLELIST,0,numVerts,nShadowStartBatchIndex,numPolys);
 
 	nShadowVertsInBuf += numVerts;
 	nShadowStartBatchVertex=nShadowVertsInBuf;
@@ -3409,37 +3409,37 @@ void W3DVolumetricShadowManager::renderStencilShadows()
 	DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
 
 	// Use alpha blending to draw the transparent shadow
-    DX8Wrapper::Raw_Set_Render_State( D3DRS_ALPHABLENDENABLE, TRUE );
-//  DX8Wrapper::Raw_Set_Render_State( D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA );
-//  DX8Wrapper::Raw_Set_Render_State( D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_SRCBLEND,  D3DBLEND_DESTCOLOR);
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_DESTBLEND, D3DBLEND_ZERO );
+    DX8Wrapper::Raw_Set_Render_State( GFX_RS_ALPHABLENDENABLE, TRUE );
+//  DX8Wrapper::Raw_Set_Render_State( GFX_RS_SRCBLEND,  GFX_BLEND_SRCALPHA );
+//  DX8Wrapper::Raw_Set_Render_State( GFX_RS_DESTBLEND, GFX_BLEND_INVSRCALPHA );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_SRCBLEND,  GFX_BLEND_DESTCOLOR);
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_DESTBLEND, GFX_BLEND_ZERO );
 
 
 	// Set stencil states
-    DX8Wrapper::Raw_Set_Render_State( D3DRS_ZENABLE,          TRUE );
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ZFUNC, D3DCMP_ALWAYS);
+    DX8Wrapper::Raw_Set_Render_State( GFX_RS_ZENABLE,          TRUE );
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ZFUNC, GFX_CMP_ALWAYS);
 
 	// Only write where stencil val >= 1 (count indicates # of shadows that
 	// overlap that pixel)
-    DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILENABLE, TRUE );
-    DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILFUNC, D3DCMP_LESSEQUAL );	//reference value is less or equal to stencil
-    DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILPASS, D3DSTENCILOP_KEEP );
+    DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILENABLE, TRUE );
+    DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILFUNC, GFX_CMP_LESSEQUAL );	//reference value is less or equal to stencil
+    DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILPASS, GFX_STENCILOP_KEEP );
 	//Upper bits of stencil could be used for storing occluded models which are player colored.  So we mask out those
 	//pixels and only use the lower bits for shadow calculations.
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILMASK,     ~TheW3DShadowManager->getStencilShadowMask());
-    DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILREF,      0x1 );
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILMASK,     ~TheW3DShadowManager->getStencilShadowMask());
+    DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILREF,      0x1 );
 
 
-	DX8Wrapper::Raw_Set_Render_State(D3DRS_SHADEMODE, D3DSHADE_FLAT);
+	DX8Wrapper::Raw_Set_Render_State(GFX_RS_SHADEMODE, GFX_SHADE_FLAT);
 
 	if (DX8Wrapper::_Is_Triangle_Draw_Enabled())
-		DX8Wrapper::Raw_Draw_Primitive_UP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(_TRANSLITVERTEX));
+		DX8Wrapper::Raw_Draw_Primitive_UP(GFX_PT_TRIANGLESTRIP, 2, v, sizeof(_TRANSLITVERTEX));
 
-	DX8Wrapper::Raw_Set_Render_State(D3DRS_SHADEMODE, D3DSHADE_GOURAUD);
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_ALPHABLENDENABLE, FALSE );
+	DX8Wrapper::Raw_Set_Render_State(GFX_RS_SHADEMODE, GFX_SHADE_GOURAUD);
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_ALPHABLENDENABLE, FALSE );
 	// turn off the stencil buffer
-	DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILENABLE, FALSE );
+	DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILENABLE, FALSE );
 
 }
 
@@ -3487,50 +3487,50 @@ void W3DVolumetricShadowManager::renderShadows( Bool forceStencilFill )
 		DX8Wrapper::Apply_Render_State_Changes();	//force update of view and projection matrices
 
 		// turn off z writing
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-	  DX8Wrapper::Raw_Set_Render_State( D3DRS_ZENABLE,          TRUE );
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ZWRITEENABLE , FALSE);
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHATESTENABLE, FALSE);
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_FOGENABLE, FALSE);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ZFUNC, GFX_CMP_LESSEQUAL);
+	  DX8Wrapper::Raw_Set_Render_State( GFX_RS_ZENABLE,          TRUE );
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ZWRITEENABLE , FALSE);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHATESTENABLE, FALSE);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_FOGENABLE, FALSE);
 
 
 		// setup the TMU to default
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_SHADEMODE, D3DSHADE_FLAT);
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_LIGHTING, FALSE);
-		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, D3DTSS_COLORARG1, D3DTA_TEXTURE );
-		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, D3DTSS_COLORARG2, D3DTA_DIFFUSE );
-		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, D3DTSS_COLOROP,   D3DTOP_SELECTARG2);
-		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, D3DTSS_ALPHAOP,   D3DTOP_DISABLE );
-		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, D3DTSS_TEXCOORDINDEX, 0 );
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_SHADEMODE, GFX_SHADE_FLAT);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_LIGHTING, FALSE);
+		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, GFX_TSS_COLORARG1, GFX_TA_TEXTURE );
+		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, GFX_TSS_COLORARG2, GFX_TA_DIFFUSE );
+		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, GFX_TSS_COLOROP,   GFX_TOP_SELECTARG2);
+		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, GFX_TSS_ALPHAOP,   GFX_TOP_DISABLE );
+		DX8Wrapper::Raw_Set_Texture_Stage_State( 0, GFX_TSS_TEXCOORDINDEX, 0 );
 
-		DX8Wrapper::Raw_Set_Texture_Stage_State( 1, D3DTSS_COLOROP,   D3DTOP_DISABLE);
-		DX8Wrapper::Raw_Set_Texture_Stage_State( 1, D3DTSS_ALPHAOP,   D3DTOP_DISABLE );
-		DX8Wrapper::Raw_Set_Texture_Stage_State( 1, D3DTSS_TEXCOORDINDEX, 1 );
+		DX8Wrapper::Raw_Set_Texture_Stage_State( 1, GFX_TSS_COLOROP,   GFX_TOP_DISABLE);
+		DX8Wrapper::Raw_Set_Texture_Stage_State( 1, GFX_TSS_ALPHAOP,   GFX_TOP_DISABLE );
+		DX8Wrapper::Raw_Set_Texture_Stage_State( 1, GFX_TSS_TEXCOORDINDEX, 1 );
 		DX8Wrapper::Raw_Set_Texture(0,nullptr);
 		DX8Wrapper::Raw_Set_Texture(1,nullptr);
 
 		DWORD oldColorWriteEnable=0x12345678;
 
 	#ifdef SV_DEBUG
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHABLENDENABLE , TRUE);
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILENABLE, FALSE );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_SRCBLEND, /*D3DBLEND_DESTCOLOR*/D3DBLEND_ONE );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_DESTBLEND, D3DBLEND_ZERO );
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHABLENDENABLE , TRUE);
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILENABLE, FALSE );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_SRCBLEND, /*GFX_BLEND_DESTCOLOR*/GFX_BLEND_ONE );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_DESTBLEND, GFX_BLEND_ZERO );
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ZFUNC, GFX_CMP_LESSEQUAL);
 	#else
 		//disable writes to color buffer
 		if (DX8Wrapper::Get_Current_Caps()->Get_DX8_Caps().PrimitiveMiscCaps & D3DPMISCCAPS_COLORWRITEENABLE)
-		{	DX8Wrapper::Raw_Get_Render_State(D3DRS_COLORWRITEENABLE, &oldColorWriteEnable);
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,0);
+		{	DX8Wrapper::Raw_Get_Render_State(GFX_RS_COLORWRITEENABLE, &oldColorWriteEnable);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_COLORWRITEENABLE,0);
 		}
 		else
 		{
 			//device does not support disabling writes to color buffer so fake it through alpha blending
-			DX8Wrapper::Raw_Set_Render_State( D3DRS_SRCBLEND, D3DBLEND_ZERO );
-			DX8Wrapper::Raw_Set_Render_State( D3DRS_DESTBLEND, D3DBLEND_ONE );
-			DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHABLENDENABLE , TRUE);
+			DX8Wrapper::Raw_Set_Render_State( GFX_RS_SRCBLEND, GFX_BLEND_ZERO );
+			DX8Wrapper::Raw_Set_Render_State( GFX_RS_DESTBLEND, GFX_BLEND_ONE );
+			DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHABLENDENABLE , TRUE);
 		}
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILENABLE, TRUE );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILENABLE, TRUE );
 	#endif
 		//Any pixels with stencil already set to 128 contains a potential occluder.  If this pixels also has any of the player
 		//color stencil bits also set, it means that it's an occluded player color and we need to NOT render shadows here.  We
@@ -3538,21 +3538,21 @@ void W3DVolumetricShadowManager::renderShadows( Bool forceStencilFill )
 		//If the value of just the potential occluder bit is >= than the combined bits, then we know none of the player color
 		//bits were set and it's okay to render shadow.
 		if (TheW3DShadowManager->getStencilShadowMask() == 0x80808080)
-			DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILFUNC,     D3DCMP_NOTEQUAL );	//in this mode, MSB indicates occluded player pixels.
+			DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILFUNC,     GFX_CMP_NOTEQUAL );	//in this mode, MSB indicates occluded player pixels.
 		else
-			DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILFUNC,     D3DCMP_GREATEREQUAL );	//in this mode, multiple bits indicate occluded player pixels.
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILREF,      0x80808080 );			//isolate MSB, it's used to indicate pixels containing potential occluders.
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILMASK,     TheW3DShadowManager->getStencilShadowMask());	//isolate upper bits containing PotentialOccluderBit|PlayerColorBits
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILWRITEMASK,0xffffffff );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILFAIL,  D3DSTENCILOP_KEEP );
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILPASS,  D3DSTENCILOP_INCR );
+			DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILFUNC,     GFX_CMP_GREATEREQUAL );	//in this mode, multiple bits indicate occluded player pixels.
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILREF,      0x80808080 );			//isolate MSB, it's used to indicate pixels containing potential occluders.
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILMASK,     TheW3DShadowManager->getStencilShadowMask());	//isolate upper bits containing PotentialOccluderBit|PlayerColorBits
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILWRITEMASK,0xffffffff );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILZFAIL, GFX_STENCILOP_KEEP );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILFAIL,  GFX_STENCILOP_KEEP );
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILPASS,  GFX_STENCILOP_INCR );
 
 		DX8Wrapper::Raw_Set_Vertex_Shader(SHADOW_DYNAMIC_VOLUME_FVF);
 
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_CULLMODE,D3DCULL_CW);
-//		DX8Wrapper::Raw_Set_Render_State(D3DRS_ZBIAS,1);	///@todo: See if this helps or makes things worse.
-		//DX8Wrapper::Raw_Set_Render_State(D3DRS_FILLMODE,D3DFILL_WIREFRAME);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_CULLMODE,GFX_CULL_CW);
+//		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ZBIAS,1);	///@todo: See if this helps or makes things worse.
+		//DX8Wrapper::Raw_Set_Render_State(GFX_RS_FILLMODE,GFX_FILL_WIREFRAME);
 
 
 		lastActiveVertexBuffer=nullptr;	//reset
@@ -3600,14 +3600,14 @@ void W3DVolumetricShadowManager::renderShadows( Bool forceStencilFill )
 		}
 
 		// change the stencil op to decrement
-		DX8Wrapper::Raw_Set_Render_State( D3DRS_STENCILPASS,  D3DSTENCILOP_DECRSAT);
+		DX8Wrapper::Raw_Set_Render_State( GFX_RS_STENCILPASS,  GFX_STENCILOP_DECRSAT);
 
 		//
 		// invert normals of shadow volumes so we can decrement in the
 		// stencil buffer and render
 		//
 
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_CULLMODE,D3DCULL_CCW);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_CULLMODE,GFX_CULL_CCW);
 
 		for (nextVb=TheW3DBufferManager->getNextVertexBuffer(nullptr,W3DBufferManager::VBM_FVF_XYZ);nextVb != nullptr; nextVb=TheW3DBufferManager->getNextVertexBuffer(nextVb,W3DBufferManager::VBM_FVF_XYZ))
 		{
@@ -3636,13 +3636,13 @@ void W3DVolumetricShadowManager::renderShadows( Bool forceStencilFill )
 			nextVb->m_renderTaskList=nullptr;
 		}
 
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_CULLMODE,D3DCULL_CW);
-//		DX8Wrapper::Raw_Set_Render_State(D3DRS_ZBIAS,0);	///@todo: See if this helps or makes things worse.
-		//DX8Wrapper::Raw_Set_Render_State(D3DRS_FILLMODE,D3DFILL_SOLID);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_CULLMODE,GFX_CULL_CW);
+//		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ZBIAS,0);	///@todo: See if this helps or makes things worse.
+		//DX8Wrapper::Raw_Set_Render_State(GFX_RS_FILLMODE,GFX_FILL_SOLID);
 
 
 		if (oldColorWriteEnable != 0x12345678)
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,oldColorWriteEnable);
+			DX8Wrapper::Set_DX8_Render_State(GFX_RS_COLORWRITEENABLE,oldColorWriteEnable);
 
 		//
 		// render the big transparent square of shadows in the stencil buffer
@@ -3652,9 +3652,9 @@ void W3DVolumetricShadowManager::renderShadows( Bool forceStencilFill )
 //		if (numRenderedShadows)
 			renderStencilShadows();
 
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_SHADEMODE, D3DSHADE_GOURAUD);
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_ALPHABLENDENABLE , FALSE);
-		DX8Wrapper::Raw_Set_Render_State(D3DRS_LIGHTING, FALSE);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_SHADEMODE, GFX_SHADE_GOURAUD);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_ALPHABLENDENABLE , FALSE);
+		DX8Wrapper::Raw_Set_Render_State(GFX_RS_LIGHTING, FALSE);
 
 		DX8Wrapper::Invalidate_Cached_Render_States();
 	}

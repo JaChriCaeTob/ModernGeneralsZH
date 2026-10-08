@@ -87,29 +87,29 @@ TextureFilterClass::TextureFilterClass(MipCountType mip_level_count)
 */
 void TextureFilterClass::Apply(unsigned int stage)
 {
-	DX8Wrapper::Set_DX8_Texture_Stage_State(stage,D3DTSS_MINFILTER,_MinTextureFilters[stage][TextureMinFilter]);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(stage,D3DTSS_MAGFILTER,_MagTextureFilters[stage][TextureMagFilter]);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(stage,D3DTSS_MIPFILTER,_MipMapFilters[stage][MipMapFilter]);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(stage,GFX_TSS_MINFILTER,_MinTextureFilters[stage][TextureMinFilter]);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(stage,GFX_TSS_MAGFILTER,_MagTextureFilters[stage][TextureMagFilter]);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(stage,GFX_TSS_MIPFILTER,_MipMapFilters[stage][MipMapFilter]);
 
 	switch (Get_U_Addr_Mode())
 	{
 	case TEXTURE_ADDRESS_REPEAT:
-		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_ADDRESSU, D3DTADDRESS_WRAP);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, GFX_TSS_ADDRESSU, GFX_TADDRESS_WRAP);
 		break;
 
 	case TEXTURE_ADDRESS_CLAMP:
-		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, GFX_TSS_ADDRESSU, GFX_TADDRESS_CLAMP);
 		break;
 	}
 
 	switch (Get_V_Addr_Mode())
 	{
 	case TEXTURE_ADDRESS_REPEAT:
-		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_ADDRESSV, D3DTADDRESS_WRAP);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, GFX_TSS_ADDRESSV, GFX_TADDRESS_WRAP);
 		break;
 
 	case TEXTURE_ADDRESS_CLAMP:
-		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, GFX_TSS_ADDRESSV, GFX_TADDRESS_CLAMP);
 		break;
 	}
 }
@@ -123,19 +123,19 @@ void TextureFilterClass::_Init_Filters(TextureFilterMode texture_filter, Anisotr
 	const D3DCAPS8& dx8caps=DX8Wrapper::Get_Current_Caps()->Get_DX8_Caps();
 
 	// TheSuperHackers @info Init zero stage filter defaults, point filtering is the lowest type for non mip filtering
-	_MinTextureFilters[0][FILTER_TYPE_NONE]=D3DTEXF_POINT;
-	_MagTextureFilters[0][FILTER_TYPE_NONE]=D3DTEXF_POINT;
-	_MipMapFilters[0][FILTER_TYPE_NONE]=D3DTEXF_NONE;
+	_MinTextureFilters[0][FILTER_TYPE_NONE]=GFX_TEXF_POINT;
+	_MagTextureFilters[0][FILTER_TYPE_NONE]=GFX_TEXF_POINT;
+	_MipMapFilters[0][FILTER_TYPE_NONE]=GFX_TEXF_NONE;
 
 	// Bilinear
-	_MinTextureFilters[0][FILTER_TYPE_FAST]=D3DTEXF_LINEAR;
-	_MagTextureFilters[0][FILTER_TYPE_FAST]=D3DTEXF_LINEAR;
-	_MipMapFilters[0][FILTER_TYPE_FAST]=D3DTEXF_POINT;
+	_MinTextureFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_LINEAR;
+	_MagTextureFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_LINEAR;
+	_MipMapFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_POINT;
 
 	// Anisotropic - MipMap interlayer filtering only goes up to linear
-	_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_ANISOTROPIC;
-	_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_ANISOTROPIC;
-	_MipMapFilters[0][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
+	_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_ANISOTROPIC;
+	_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_ANISOTROPIC;
+	_MipMapFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
 
 	// TheSuperHackers @feature Mauller 08/03/2026 Add full support for all texture filtering modes;
 	// None, Point, Bilinear, Trilinear, Anisotropic.
@@ -149,24 +149,24 @@ void TextureFilterClass::_Init_Filters(TextureFilterMode texture_filter, Anisotr
 
 	case TEXTURE_FILTER_NONE:
 
-		_MinTextureFilters[0][FILTER_TYPE_FAST]=D3DTEXF_POINT;
-		_MagTextureFilters[0][FILTER_TYPE_FAST]=D3DTEXF_POINT;
-		_MipMapFilters[0][FILTER_TYPE_FAST]=D3DTEXF_NONE;
+		_MinTextureFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_POINT;
+		_MagTextureFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_POINT;
+		_MipMapFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_NONE;
 
-		_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
-		_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
-		_MipMapFilters[0][FILTER_TYPE_BEST]=D3DTEXF_NONE;
+		_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
+		_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
+		_MipMapFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_NONE;
 		break;
 
 	case TEXTURE_FILTER_POINT:
 
-		_MinTextureFilters[0][FILTER_TYPE_FAST]=D3DTEXF_POINT;
-		_MagTextureFilters[0][FILTER_TYPE_FAST]=D3DTEXF_POINT;
-		_MipMapFilters[0][FILTER_TYPE_FAST]=D3DTEXF_POINT;
+		_MinTextureFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_POINT;
+		_MagTextureFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_POINT;
+		_MipMapFilters[0][FILTER_TYPE_FAST]=GFX_TEXF_POINT;
 
-		_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
-		_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
-		_MipMapFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
+		_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
+		_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
+		_MipMapFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
 		break;
 
 	case TEXTURE_FILTER_BILINEAR:
@@ -175,15 +175,15 @@ void TextureFilterClass::_Init_Filters(TextureFilterMode texture_filter, Anisotr
 			(dx8caps.TextureFilterCaps & D3DPTFILTERCAPS_MAGFLINEAR);
 
 		if (FilterSupported) {
-			_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
-			_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
+			_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
+			_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
 		}
 		else {
-			_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
-			_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
+			_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
+			_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
 		}
 
-		_MipMapFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
+		_MipMapFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
 		break;
 
 	case TEXTURE_FILTER_TRILINEAR:
@@ -192,21 +192,21 @@ void TextureFilterClass::_Init_Filters(TextureFilterMode texture_filter, Anisotr
 			(dx8caps.TextureFilterCaps & D3DPTFILTERCAPS_MAGFLINEAR);
 
 		if (FilterSupported) {
-			_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
-			_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
+			_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
+			_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
 		}
 		else {
-			_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
-			_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
+			_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
+			_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
 		}
 
 		if (dx8caps.TextureFilterCaps & D3DPTFILTERCAPS_MIPFLINEAR) {
-			_MipMapFilters[0][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
+			_MipMapFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
 		}
 		else {
 			// TheSuperHackers @info if only linear mipmap filtering is unsupported,
 			// Trilinear filtering becomes Bilinear filtering by default
-			_MipMapFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
+			_MipMapFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
 		}
 		break;
 
@@ -216,22 +216,22 @@ void TextureFilterClass::_Init_Filters(TextureFilterMode texture_filter, Anisotr
 			(dx8caps.TextureFilterCaps & D3DPTFILTERCAPS_MINFANISOTROPIC);
 
 		if (FilterSupported) {
-			_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_ANISOTROPIC;
-			_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_ANISOTROPIC;
+			_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_ANISOTROPIC;
+			_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_ANISOTROPIC;
 
 			// Set the Anisotropic filtering level for all stages
 			_Set_Max_Anisotropy(anisotropy_level);
 		}
 		else {
-			_MinTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
-			_MagTextureFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
+			_MinTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
+			_MagTextureFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
 		}
 
 		if (dx8caps.TextureFilterCaps & D3DPTFILTERCAPS_MIPFLINEAR) {
-			_MipMapFilters[0][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
+			_MipMapFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
 		}
 		else {
-			_MipMapFilters[0][FILTER_TYPE_BEST]=D3DTEXF_POINT;
+			_MipMapFilters[0][FILTER_TYPE_BEST]=GFX_TEXF_POINT;
 		}
 		break;
 
@@ -250,15 +250,15 @@ void TextureFilterClass::_Init_Filters(TextureFilterMode texture_filter, Anisotr
 		_MipMapFilters[i][FILTER_TYPE_FAST]=_MipMapFilters[0][FILTER_TYPE_FAST];
 
 		// When Anisotropic filtering is used, all stages above zero use trilinear filtering
-		if (_MagTextureFilters[0][FILTER_TYPE_BEST]==D3DTEXF_ANISOTROPIC) {
-			_MagTextureFilters[i][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
+		if (_MagTextureFilters[0][FILTER_TYPE_BEST]==GFX_TEXF_ANISOTROPIC) {
+			_MagTextureFilters[i][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
 		}
 		else {
 			_MagTextureFilters[i][FILTER_TYPE_BEST]=_MagTextureFilters[0][FILTER_TYPE_BEST];
 		}
 
-		if (_MinTextureFilters[0][FILTER_TYPE_BEST]==D3DTEXF_ANISOTROPIC) {
-			_MinTextureFilters[i][FILTER_TYPE_BEST]=D3DTEXF_LINEAR;
+		if (_MinTextureFilters[0][FILTER_TYPE_BEST]==GFX_TEXF_ANISOTROPIC) {
+			_MinTextureFilters[i][FILTER_TYPE_BEST]=GFX_TEXF_LINEAR;
 		}
 		else {
 			_MinTextureFilters[i][FILTER_TYPE_BEST]=_MinTextureFilters[0][FILTER_TYPE_BEST];
@@ -298,7 +298,7 @@ void TextureFilterClass::Set_Mip_Mapping(FilterType mipmap)
 void TextureFilterClass::_Set_Max_Anisotropy(AnisotropicFilterMode mode)
 {
 	for (int stage = 0; stage < MAX_TEXTURE_STAGES; ++stage)
-		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, D3DTSS_MAXANISOTROPY, mode);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(stage, GFX_TSS_MAXANISOTROPY, mode);
 }
 
 //**********************************************************************************************

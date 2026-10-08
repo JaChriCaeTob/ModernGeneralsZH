@@ -515,13 +515,13 @@ void DX8Caps::Shutdown()
 
 void DX8Caps::Init_Caps(IDirect3DDevice8* D3DDevice)
 {
-	D3DDevice->SetRenderState(D3DRS_SOFTWAREVERTEXPROCESSING,TRUE);
+	D3DDevice->SetRenderState(GFX_RS_SOFTWAREVERTEXPROCESSING,TRUE);
 	DX8CALL(GetDeviceCaps(&Caps));
 
 	if ((Caps.DevCaps&D3DDEVCAPS_HWTRANSFORMANDLIGHT)==D3DDEVCAPS_HWTRANSFORMANDLIGHT) {
 		SupportTnL=true;
 
-		D3DDevice->SetRenderState(D3DRS_SOFTWAREVERTEXPROCESSING,FALSE);
+		D3DDevice->SetRenderState(GFX_RS_SOFTWAREVERTEXPROCESSING,FALSE);
 		DX8CALL(GetDeviceCaps(&Caps));
 	} else {
 		SupportTnL=false;
@@ -1164,7 +1164,7 @@ void DX8Caps::Vendor_Specific_Hacks(const D3DADAPTER_IDENTIFIER8& adapter_id)
 
 	if (VendorId==VENDOR_VMWARE) {
 		// TheSuperHackers @bugfix Stubbjax 15/01/2026 Disable DOT3 support for VMWare's virtual GPU.
-		// The D3DTA_ALPHAREPLICATE modifier fails when passed to a D3DTOP_MULTIPLYADD operation.
+		// The GFX_TA_ALPHAREPLICATE modifier fails when passed to a GFX_TOP_MULTIPLYADD operation.
 		DXLOG(("Disabling DOT3 on VMWare\r\n"));
 		SupportDot3 = false;
 	}

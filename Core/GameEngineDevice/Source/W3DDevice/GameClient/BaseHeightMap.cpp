@@ -2318,10 +2318,10 @@ void BaseHeightMapRenderObjClass::renderShoreLines(CameraClass *pCamera)
 	DX8Wrapper::Set_Material(vmat);
 	REF_PTR_RELEASE(vmat);
 	DX8Wrapper::Set_Texture(0,m_destAlphaTexture);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,Matrix3D(true));
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,Matrix3D(true));
 	//Enabled writes to destination alpha only
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,D3DCOLORWRITEENABLE_ALPHA);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0,  D3DTSS_TEXCOORDINDEX, 0);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_COLORWRITEENABLE,GFX_COLORWRITEENABLE_ALPHA);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0,  GFX_TSS_TEXCOORDINDEX, 0);
 
 
 	while (j != m_numShoreLineTiles)
@@ -2336,7 +2336,7 @@ void BaseHeightMapRenderObjClass::renderShoreLines(CameraClass *pCamera)
 			DynamicIBAccessClass::WriteLockClass lockib(&ib_access);
 			UnsignedShort *ib=lockib.Get_Index_Array();
 			if (!ib || !vb)
-			{	DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,D3DCOLORWRITEENABLE_BLUE|D3DCOLORWRITEENABLE_GREEN|D3DCOLORWRITEENABLE_RED);
+			{	DX8Wrapper::Set_DX8_Render_State(GFX_RS_COLORWRITEENABLE,GFX_COLORWRITEENABLE_BLUE|GFX_COLORWRITEENABLE_GREEN|GFX_COLORWRITEENABLE_RED);
 				return;
 			}
 
@@ -2445,7 +2445,7 @@ void BaseHeightMapRenderObjClass::renderShoreLines(CameraClass *pCamera)
 	}
 
 	//Disable writes to destination alpha
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,D3DCOLORWRITEENABLE_BLUE|D3DCOLORWRITEENABLE_GREEN|D3DCOLORWRITEENABLE_RED);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_COLORWRITEENABLE,GFX_COLORWRITEENABLE_BLUE|GFX_COLORWRITEENABLE_GREEN|GFX_COLORWRITEENABLE_RED);
 	ShaderClass::Invalidate();
 }
 
@@ -2504,10 +2504,10 @@ void BaseHeightMapRenderObjClass::renderShoreLinesSorted(CameraClass *pCamera)
 	DX8Wrapper::Set_Material(vmat);
 	REF_PTR_RELEASE(vmat);
 	DX8Wrapper::Set_Texture(0,m_destAlphaTexture);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,Matrix3D(true));
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,Matrix3D(true));
 	//Enabled writes to destination alpha only
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,D3DCOLORWRITEENABLE_ALPHA);
-	DX8Wrapper::Set_DX8_Texture_Stage_State(0,  D3DTSS_TEXCOORDINDEX, 0);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_COLORWRITEENABLE,GFX_COLORWRITEENABLE_ALPHA);
+	DX8Wrapper::Set_DX8_Texture_Stage_State(0,  GFX_TSS_TEXCOORDINDEX, 0);
 
 	Bool isDone=FALSE;
 	Int lastRenderedTile=0;
@@ -2524,7 +2524,7 @@ void BaseHeightMapRenderObjClass::renderShoreLinesSorted(CameraClass *pCamera)
 			DynamicIBAccessClass::WriteLockClass lockib(&ib_access);
 			UnsignedShort *ib=lockib.Get_Index_Array();
 			if (!ib || !vb)
-			{	DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,D3DCOLORWRITEENABLE_BLUE|D3DCOLORWRITEENABLE_GREEN|D3DCOLORWRITEENABLE_RED);
+			{	DX8Wrapper::Set_DX8_Render_State(GFX_RS_COLORWRITEENABLE,GFX_COLORWRITEENABLE_BLUE|GFX_COLORWRITEENABLE_GREEN|GFX_COLORWRITEENABLE_RED);
 				return;
 			}
 
@@ -2788,7 +2788,7 @@ flushVertexBuffer1:
 	}
 
 	//Disable writes to destination alpha
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_COLORWRITEENABLE,D3DCOLORWRITEENABLE_BLUE|D3DCOLORWRITEENABLE_GREEN|D3DCOLORWRITEENABLE_RED);
+	DX8Wrapper::Set_DX8_Render_State(GFX_RS_COLORWRITEENABLE,GFX_COLORWRITEENABLE_BLUE|GFX_COLORWRITEENABLE_GREEN|GFX_COLORWRITEENABLE_RED);
 	ShaderClass::Invalidate();
 }
 
@@ -2808,7 +2808,7 @@ void BaseHeightMapRenderObjClass::renderTrees(CameraClass * camera)
 	if (m_map==nullptr) return;
 	if (Scene==nullptr) return;
 	if (m_treeBuffer) {
-		DX8Wrapper::Set_Transform(D3DTS_WORLD,Transform);
+		DX8Wrapper::Set_Transform(GFX_TS_WORLD,Transform);
 		DX8Wrapper::Set_Material(m_vertexMaterialClass);
 		RTS3DScene *pMyScene = (RTS3DScene *)Scene;
 		RefRenderObjListIterator pDynamicLightsIterator(pMyScene->getDynamicLights());

@@ -373,8 +373,8 @@ static void Apply_Render_State(RenderStateStruct& render_state)
 		DX8Wrapper::Set_Texture(i,render_state.Textures[i]);
 	}
 
-	DX8Wrapper::_Set_DX8_Transform(D3DTS_WORLD,render_state.world);
-	DX8Wrapper::_Set_DX8_Transform(D3DTS_VIEW,render_state.view);
+	DX8Wrapper::_Set_DX8_Transform(GFX_TS_WORLD,render_state.world);
+	DX8Wrapper::_Set_DX8_Transform(GFX_TS_VIEW,render_state.view);
 
 
 	if (!render_state.material->Get_Lighting())
@@ -603,8 +603,8 @@ void SortingRendererClass::Flush()
 	WWPROFILE("SortingRenderer::Flush");
 	Matrix4x4 old_view;
 	Matrix4x4 old_world;
-	DX8Wrapper::Get_Transform(D3DTS_VIEW,old_view);
-	DX8Wrapper::Get_Transform(D3DTS_WORLD,old_world);
+	DX8Wrapper::Get_Transform(GFX_TS_VIEW,old_view);
+	DX8Wrapper::Get_Transform(GFX_TS_WORLD,old_world);
 
 	// TheSuperHackers @perf stephanmeesters 04/07/2026
 	// Splice nodes that have no bounding information (Z=0.0) at the correct location into the sorted list.
@@ -644,8 +644,8 @@ void SortingRendererClass::Flush()
 	DynamicVBAccessClass::_Reset(false);
 
 
-	DX8Wrapper::Set_Transform(D3DTS_VIEW,old_view);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,old_world);
+	DX8Wrapper::Set_Transform(GFX_TS_VIEW,old_view);
+	DX8Wrapper::Set_Transform(GFX_TS_WORLD,old_world);
 
 }
 

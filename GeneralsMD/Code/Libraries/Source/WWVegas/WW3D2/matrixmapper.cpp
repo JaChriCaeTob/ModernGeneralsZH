@@ -233,9 +233,9 @@ void MatrixMapperClass::Apply(int uv_array_index)
 		/*
 		** Orthographic projection
 		*/
-		DX8Wrapper::Set_Transform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + Stage),ViewToPixel);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_CAMERASPACEPOSITION);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_COUNT2);
+		DX8Wrapper::Set_Transform((D3DTRANSFORMSTATETYPE)(GFX_TS_TEXTURE0 + Stage),ViewToPixel);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,GFX_TSS_TEXCOORDINDEX,GFX_TSS_TCI_CAMERASPACEPOSITION);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,GFX_TSS_TEXTURETRANSFORMFLAGS,GFX_TTFF_COUNT2);
 		break;
 	case PERSPECTIVE_PROJECTION:
 		/*
@@ -244,9 +244,9 @@ void MatrixMapperClass::Apply(int uv_array_index)
 		m[0]=ViewToPixel[0];
 		m[1]=ViewToPixel[1];
 		m[2]=ViewToPixel[3];
-		DX8Wrapper::Set_Transform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + Stage),m);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_CAMERASPACEPOSITION);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_PROJECTED|D3DTTFF_COUNT3);
+		DX8Wrapper::Set_Transform((D3DTRANSFORMSTATETYPE)(GFX_TS_TEXTURE0 + Stage),m);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,GFX_TSS_TEXCOORDINDEX,GFX_TSS_TCI_CAMERASPACEPOSITION);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,GFX_TSS_TEXTURETRANSFORMFLAGS,GFX_TTFF_PROJECTED|GFX_TTFF_COUNT3);
 		break;
 	case DEPTH_GRADIENT:
 		/*
@@ -257,9 +257,9 @@ void MatrixMapperClass::Apply(int uv_array_index)
 		*/
 		m[0].Set(0,0,0,GradientUCoord);
 		m[1]=ViewToPixel[2];
-		DX8Wrapper::Set_Transform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + Stage),m);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_CAMERASPACEPOSITION);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_COUNT2);
+		DX8Wrapper::Set_Transform((D3DTRANSFORMSTATETYPE)(GFX_TS_TEXTURE0 + Stage),m);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,GFX_TSS_TEXCOORDINDEX,GFX_TSS_TCI_CAMERASPACEPOSITION);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,GFX_TSS_TEXTURETRANSFORMFLAGS,GFX_TTFF_COUNT2);
 		break;
 	case NORMAL_GRADIENT:
 		/*
@@ -270,9 +270,9 @@ void MatrixMapperClass::Apply(int uv_array_index)
 		*/
 		m[0].Set(0,0,0,GradientUCoord);
 		m[1].Set(ViewSpaceProjectionNormal.X,ViewSpaceProjectionNormal.Y,ViewSpaceProjectionNormal.Z, 0);
-		DX8Wrapper::Set_Transform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + Stage),m);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_CAMERASPACENORMAL);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_COUNT2);
+		DX8Wrapper::Set_Transform((D3DTRANSFORMSTATETYPE)(GFX_TS_TEXTURE0 + Stage),m);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,GFX_TSS_TEXCOORDINDEX,GFX_TSS_TCI_CAMERASPACENORMAL);
+		DX8Wrapper::Set_DX8_Texture_Stage_State(Stage,GFX_TSS_TEXTURETRANSFORMFLAGS,GFX_TTFF_COUNT2);
 		break;
 	}
 

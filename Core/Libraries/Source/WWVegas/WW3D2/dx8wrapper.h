@@ -44,6 +44,7 @@
 #include "WWLib/always.h"
 #include "dllist.h"
 #include "d3d8.h"
+#include "gfx_d3d8_map.h"
 #include "WWMath/matrix4.h"
 #include "statistics.h"
 #include "WWLib/wwstring.h"
@@ -668,7 +669,7 @@ protected:
 
 	static RenderStateStruct			render_state;
 	static unsigned						render_state_changed;
-	static D3DMATRIX						DX8Transforms[D3DTS_WORLD+1];
+	static D3DMATRIX						DX8Transforms[GFX_TS_WORLD+1];
 
 	static bool								IsInitted;
 	static bool								IsDeviceLost;
@@ -791,7 +792,7 @@ WWINLINE void DX8Wrapper::Set_Pixel_Shader_Constant(int reg, const void* data, i
 
 WWINLINE void DX8Wrapper::_Set_DX8_Transform(D3DTRANSFORMSTATETYPE transform, const D3DMATRIX& m)
 {
-	WWASSERT(transform<=D3DTS_WORLD);
+	WWASSERT(transform<=GFX_TS_WORLD);
 #if 0 // (gth) this optimization is breaking generals because they set the transform behind our backs.
 	if (mtx!=DX8Transforms[transform])
 #endif
@@ -844,15 +845,15 @@ WWINLINE void DX8Wrapper::Set_Fog(bool enable, const Vector3 &color, float start
 	ShaderClass::Invalidate();
 
 	// Set renderstates which are not affected by the shader
-	Set_DX8_Render_State(D3DRS_FOGSTART, *(DWORD *)(&start));
-	Set_DX8_Render_State(D3DRS_FOGEND,   *(DWORD *)(&end));
+	Set_DX8_Render_State(GFX_RS_FOGSTART, *(DWORD *)(&start));
+	Set_DX8_Render_State(GFX_RS_FOGEND,   *(DWORD *)(&end));
 }
 
 
 WWINLINE void DX8Wrapper::Set_Ambient(const Vector3& color)
 {
 	Ambient_Color=color;
-	Set_DX8_Render_State(D3DRS_AMBIENT, DX8Wrapper::Convert_Color(color,0.0f));
+	Set_DX8_Render_State(GFX_RS_AMBIENT, DX8Wrapper::Convert_Color(color,0.0f));
 }
 
 // ----------------------------------------------------------------------------
@@ -1408,32 +1409,32 @@ WWINLINE void DX8Wrapper::Set_Projection_Transform_With_Z_Bias(const Matrix4x4& 
 		tmp_zbias*=(1.0f/16.0f);
 		tmp_zbias*=1.0f / (ZFar - ZNear);
 		tmp.m[2][2]-=tmp_zbias*tmp.m[3][2];
-		DX8CALL(SetTransform(D3DTS_PROJECTION,&tmp));
+		DX8CALL(SetTransform(GFX_TS_PROJECTION,&tmp));
 	}
 	else {
-		DX8CALL(SetTransform(D3DTS_PROJECTION,&ProjectionMatrix));
+		DX8CALL(SetTransform(GFX_TS_PROJECTION,&ProjectionMatrix));
 	}
 }
 
 WWINLINE void DX8Wrapper::Set_Transform(D3DTRANSFORMSTATETYPE transform,const Matrix4x4& m)
 {
 	switch ((int)transform) {
-	case D3DTS_WORLD:
+	case GFX_TS_WORLD:
 		render_state.world=To_D3DMATRIX(m);
 		render_state_changed|=(unsigned)WORLD_CHANGED;
 		render_state_changed&=~(unsigned)WORLD_IDENTITY;
 		break;
-	case D3DTS_VIEW:
+	case GFX_TS_VIEW:
 		render_state.view=To_D3DMATRIX(m);
 		render_state_changed|=(unsigned)VIEW_CHANGED;
 		render_state_changed&=~(unsigned)VIEW_IDENTITY;
 		break;
-	case D3DTS_PROJECTION:
+	case GFX_TS_PROJECTION:
 		{
 			D3DMATRIX ProjectionMatrix=To_D3DMATRIX(m);
 			ZFar=0.0f;
 			ZNear=0.0f;
-			DX8CALL(SetTransform(D3DTS_PROJECTION,&ProjectionMatrix));
+			DX8CALL(SetTransform(GFX_TS_PROJECTION,&ProjectionMatrix));
 		}
 		break;
 	default:
@@ -1447,12 +1448,12 @@ WWINLINE void DX8Wrapper::Set_Transform(D3DTRANSFORMSTATETYPE transform,const Ma
 WWINLINE void DX8Wrapper::Set_Transform(D3DTRANSFORMSTATETYPE transform,const Matrix3D& m)
 {
 	switch ((int)transform) {
-	case D3DTS_WORLD:
+	case GFX_TS_WORLD:
 		render_state.world=To_D3DMATRIX(m);
 		render_state_changed|=(unsigned)WORLD_CHANGED;
 		render_state_changed&=~(unsigned)WORLD_IDENTITY;
 		break;
-	case D3DTS_VIEW:
+	case GFX_TS_VIEW:
 		render_state.view=To_D3DMATRIX(m);
 		render_state_changed|=(unsigned)VIEW_CHANGED;
 		render_state_changed&=~(unsigned)VIEW_IDENTITY;
@@ -1478,11 +1479,11 @@ WWINLINE bool DX8Wrapper::Is_View_Identity()
 WWINLINE void DX8Wrapper::Get_Transform(D3DTRANSFORMSTATETYPE transform, Matrix4x4& m)
 {
 	switch ((int)transform) {
-	case D3DTS_WORLD:
+	case GFX_TS_WORLD:
 		if (render_state_changed&WORLD_IDENTITY) m.Make_Identity();
 		else m=To_Matrix4x4(render_state.world);
 		break;
-	case D3DTS_VIEW:
+	case GFX_TS_VIEW:
 		if (render_state_changed&VIEW_IDENTITY) m.Make_Identity();
 		else m=To_Matrix4x4(render_state.view);
 		break;
