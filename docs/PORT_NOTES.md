@@ -135,3 +135,16 @@ traversal, draw call generation) is therefore the limit, and a different graphic
 
 - DXVK log: set `DXVK_LOG_LEVEL=debug` and `DXVK_LOG_PATH=<folder>` before starting; look for `err:` lines.
 - The counter in the top-left corner of the game window shows the current render frame rate.
+
+## Native Vulkan backend (experimental)
+
+Select with the environment variable `GENERALS_GFX=vulkan` (`null` selects the no-output test backend; unset keeps Direct3D 8 via DXVK).
+Implemented in `Core/Libraries/Source/WWVegas/WW3D2/gfx_vulkan.cpp` as a class derived from the in-memory `NullDevice`; it needs Vulkan 1.3 (dynamic rendering, synchronization2, push descriptors).
+
+What it does: swapchain, asynchronous texture upload with content hashing, per-frame ring buffer for vertices/indices/uniforms, pipeline cache keyed by FVF and render state,
+and two shaders (`Shaders/gfx_fixed.vert/.frag`, compiled with `scripts/compile-vk-shaders.ps1`) that reproduce the Direct3D 8 fixed-function pipeline:
+four-stage texture combiners, alpha test, vertex lighting, texture coordinate generation and transforms, pre-transformed vertices, stencil (shadow volumes).
+
+Not implemented yet: programmable shaders (caps advertise none, so the engine uses fixed-function paths; the updated water needs them), fog, off-screen render targets
+and back-buffer readback (shockwave and heat haze effects are skipped). The main menu buttons also do not show on startup in this backend.
+The game is CPU-bound, so this backend is not faster than DXVK today; its purpose is to be the base for new rendering features.
