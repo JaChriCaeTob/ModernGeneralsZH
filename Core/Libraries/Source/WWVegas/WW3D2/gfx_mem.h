@@ -129,6 +129,7 @@ public:
 	~NullTexture() { if (s_destroyHook) s_destroyHook(this); for (NullSurface* s : m_levels) s->Release(); }
 	inline static void (*s_destroyHook)(NullTexture*) = nullptr;		// lets a GPU backend free what it created for this texture
 	bool m_dirty = true;								// CPU data changed since the last upload
+	uint64_t m_hash = 0;								// content hash at the last upload, so unchanged data is not uploaded again
 	void* m_gpu = nullptr;							// owned by the GPU backend
 	NULLGFX_REFCOUNT
 	STDMETHOD(GetDevice)(THIS_ IDirect3DDevice8** ppDevice) override { if (ppDevice) { *ppDevice = m_device; if (m_device) m_device->AddRef(); } return D3D_OK; }

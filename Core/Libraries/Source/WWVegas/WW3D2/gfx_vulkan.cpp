@@ -133,6 +133,8 @@ struct DrawUbo
 };
 static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64, "DrawUbo must match the std140 block in the shaders");
 
+uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
+
 struct Backend
 {
 	HMODULE lib = nullptr;
@@ -159,6 +161,9 @@ struct Backend
 
 	VkCommandPool pool = VK_NULL_HANDLE;
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkCommandBuffer uploadCmd = VK_NULL_HANDLE;		// texture uploads of the frame, submitted before the frame's own commands
+	bool uploadOpen = false;
+	VkDeviceSize pendingStaging = 0;
 	VkFence frameFence = VK_NULL_HANDLE;
 	VkSemaphore imageAvailable = VK_NULL_HANDLE;
 	uint32_t imageIndex = 0;
@@ -470,12 +475,45 @@ GpuTexture* CreateGpuTexture(uint32_t w, uint32_t h, uint32_t levels, const Form
 	return t;
 }
 
-// Uploads the level data with its own command buffer and waits: simple, and it keeps the staging memory short lived.
+void FreeDeferredBuffers()
+{
+	for (auto& d : B.deferredBuffers)
+	{
+		vkDestroyBuffer(B.device, d.first, nullptr);
+		Free(d.second);
+	}
+	B.deferredBuffers.clear();
+	B.pendingStaging = 0;
+}
+
+// Submits the recorded uploads on their own and waits for them. Used when too much staging memory piles up before a Present.
+void FlushUploadsSync()
+{
+	if (!B.uploadOpen)
+		return;
+	vkEndCommandBuffer(B.uploadCmd);
+	B.uploadOpen = false;
+	VkFenceCreateInfo fci{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+	VkFence fence;
+	vkCreateFence(B.device, &fci, nullptr, &fence);
+	VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	si.commandBufferCount = 1; si.pCommandBuffers = &B.uploadCmd;
+	vkQueueSubmit(B.queue, 1, &si, fence);
+	vkWaitForFences(B.device, 1, &fence, VK_TRUE, UINT64_MAX);
+	vkDestroyFence(B.device, fence, nullptr);
+	vkResetCommandBuffer(B.uploadCmd, 0);
+	FreeDeferredBuffers();
+}
+
+// Records the upload of all levels into the frame's upload command buffer. The staging memory stays alive until the frame's fence.
 void UploadLevels(GpuTexture* t, const std::vector<const NullSurface*>& levels)
 {
 	VkDeviceSize total = 0;
 	std::vector<VkDeviceSize> offsets;
 	for (const NullSurface* s : levels) { offsets.push_back(total); total += (s->m_data.size() + 15) & ~15ull; }
+	++g_uploads; g_uploadBytes += total;
+	if (B.pendingStaging + total > 256ull * 1024 * 1024)
+		FlushUploadsSync();
 	VkBuffer staging; Allocation sa;
 	if (!CreateBuffer(total, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging, sa))
 	{
@@ -484,16 +522,20 @@ void UploadLevels(GpuTexture* t, const std::vector<const NullSurface*>& levels)
 	}
 	for (size_t i = 0; i < levels.size(); ++i)
 		memcpy((char*)sa.mapped + offsets[i], levels[i]->m_data.data(), levels[i]->m_data.size());
+	B.deferredBuffers.push_back({ staging, sa });
+	B.pendingStaging += total;
 
-	VkCommandBuffer cb;
-	VkCommandBufferAllocateInfo ai{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-	ai.commandPool = B.pool; ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount = 1;
-	vkAllocateCommandBuffers(B.device, &ai, &cb);
-	VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-	bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(cb, &bi);
+	if (!B.uploadOpen)
+	{
+		vkResetCommandBuffer(B.uploadCmd, 0);
+		VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+		bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		vkBeginCommandBuffer(B.uploadCmd, &bi);
+		B.uploadOpen = true;
+	}
+	VkCommandBuffer cb = B.uploadCmd;
 	ImageBarrier(cb, t->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, t->levels);
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, t->levels);
 	std::vector<VkBufferImageCopy> regions;
 	for (size_t i = 0; i < levels.size() && i < t->levels; ++i)
 	{
@@ -506,19 +548,21 @@ void UploadLevels(GpuTexture* t, const std::vector<const NullSurface*>& levels)
 	vkCmdCopyBufferToImage(cb, staging, t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (uint32_t)regions.size(), regions.data());
 	ImageBarrier(cb, t->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT, t->levels);
-	vkEndCommandBuffer(cb);
+}
 
-	VkFenceCreateInfo fci{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-	VkFence fence;
-	vkCreateFence(B.device, &fci, nullptr, &fence);
-	VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
-	si.commandBufferCount = 1; si.pCommandBuffers = &cb;
-	vkQueueSubmit(B.queue, 1, &si, fence);
-	vkWaitForFences(B.device, 1, &fence, VK_TRUE, UINT64_MAX);
-	vkDestroyFence(B.device, fence, nullptr);
-	vkFreeCommandBuffers(B.device, B.pool, 1, &cb);
-	vkDestroyBuffer(B.device, staging, nullptr);
-	Free(sa);
+uint64_t HashLevels(const std::vector<NullSurface*>& levels)
+{
+	uint64_t h = 1469598103934665603ull;
+	for (const NullSurface* s : levels)
+	{
+		const uint64_t* w = (const uint64_t*)s->m_data.data();
+		const size_t n = s->m_data.size() / 8;
+		for (size_t i = 0; i < n; ++i)
+			h = (h ^ w[i]) * 1099511628211ull;
+		for (size_t i = n * 8; i < s->m_data.size(); ++i)
+			h = (h ^ s->m_data[i]) * 1099511628211ull;
+	}
+	return h;
 }
 
 GpuTexture* EnsureGpuTexture(NullTexture* tex)
@@ -544,10 +588,16 @@ GpuTexture* EnsureGpuTexture(NullTexture* tex)
 		if (!g)
 			return B.white;
 		tex->m_gpu = g;
+		tex->m_hash = 0;		// a new image has to be filled
 	}
+	const uint64_t hash = HashLevels(tex->m_levels);
+	const bool unchanged = tex->m_hash == hash;
+	tex->m_dirty = false;
+	if (unchanged)
+		return g;
 	std::vector<const NullSurface*> lv(tex->m_levels.begin(), tex->m_levels.end());
 	UploadLevels(g, lv);
-	tex->m_dirty = false;
+	tex->m_hash = hash;
 	return g;
 }
 
@@ -782,6 +832,7 @@ bool CreateInstanceAndDevice(HWND window)
 	VkCommandBufferAllocateInfo cai{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	cai.commandPool = B.pool; cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; cai.commandBufferCount = 1;
 	VKCHECK(vkAllocateCommandBuffers(B.device, &cai, &B.cmd));
+	VKCHECK(vkAllocateCommandBuffers(B.device, &cai, &B.uploadCmd));
 	VkFenceCreateInfo fci{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
 	VKCHECK(vkCreateFence(B.device, &fci, nullptr, &B.frameFence));
 	VkSemaphoreCreateInfo sei{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
@@ -871,13 +922,41 @@ bool EnsureRendering()
 	return true;
 }
 
+uint32_t g_frame = 0;
+int g_frameDrawLog = 0;
+uint32_t g_cnt[16] = {};
+std::vector<std::string> g_drawTrace;		// description of every draw of the sampled frame			// drawn, offscreen, pixel shader, vertex shader, stencil, ring full, other
+
 void PresentFrame()
 {
 	if (!B.ready)
 		return;
+	++g_frame;
+	g_frameDrawLog = 0;
+	if (!g_drawTrace.empty())
+	{
+		const size_t from = g_drawTrace.size() > 80 ? g_drawTrace.size() - 80 : 0;
+		Log("last %u of %u draws of frame %u:", (unsigned)(g_drawTrace.size() - from), (unsigned)g_drawTrace.size(), g_frame);
+		for (size_t i = from; i < g_drawTrace.size(); ++i)
+			Log("  %s", g_drawTrace[i].c_str());
+		g_drawTrace.clear();
+	}
+	{
+		static DWORD lastTick = 0;
+		const DWORD now = GetTickCount();
+		if (now - lastTick > 2000)
+		{
+			lastTick = now;
+			Log("uploads so far: %llu textures, %.1f MB (frame %u)", (unsigned long long)g_uploads, g_uploadBytes / 1048576.0, g_frame);
+		}
+	}
+	if (g_frame % 4000 == 0)
+		Log("frame %u: drawn %u, skipped: offscreen %u, pixel shader %u, vertex shader %u, stencil %u, ring full %u | calls: DrawPrimitive %u DrawIndexed %u UP %u IndexedUP %u | no vb %u no ib %u, no vertices %u, no rendering %u", g_frame, g_cnt[0], g_cnt[1], g_cnt[2], g_cnt[3], g_cnt[4], g_cnt[5], g_cnt[6], g_cnt[7], g_cnt[10], g_cnt[11], g_cnt[8], g_cnt[9], g_cnt[12], g_cnt[13]);
+	memset(g_cnt, 0, sizeof(g_cnt));
 	if (!EnsureRendering())
 	{
-		// minimised or the swapchain could not be made: just drop the frame's recorded work
+		// minimised or the swapchain could not be made: just drop the frame's recorded work (uploads still have to happen)
+		FlushUploadsSync();
 		vkEndCommandBuffer(B.cmd);
 		vkResetCommandBuffer(B.cmd, 0);
 		BeginCommandBuffer();
@@ -892,9 +971,16 @@ void PresentFrame()
 	B.cmdOpen = false;
 
 	VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	const bool hasUploads = B.uploadOpen;
+	if (hasUploads)
+	{
+		VKCHECK(vkEndCommandBuffer(B.uploadCmd));
+		B.uploadOpen = false;
+	}
+	VkCommandBuffer submitted[2] = { B.uploadCmd, B.cmd };
 	VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
 	si.waitSemaphoreCount = 1; si.pWaitSemaphores = &B.imageAvailable; si.pWaitDstStageMask = &wait;
-	si.commandBufferCount = 1; si.pCommandBuffers = &B.cmd;
+	si.commandBufferCount = hasUploads ? 2 : 1; si.pCommandBuffers = hasUploads ? submitted : &B.cmd;
 	si.signalSemaphoreCount = 1; si.pSignalSemaphores = &B.renderDone[B.imageIndex];
 	VKCHECK(vkQueueSubmit(B.queue, 1, &si, B.frameFence));
 	VkPresentInfoKHR pi{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
@@ -907,6 +993,7 @@ void PresentFrame()
 	vkResetCommandBuffer(B.cmd, 0);
 	BeginCommandBuffer();
 	B.ringCursor = 0;
+	FreeDeferredBuffers();
 	for (GpuTexture* g : B.deferredTextures) DestroyGpuTexture(g);
 	B.deferredTextures.clear();
 	if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
@@ -1020,13 +1107,15 @@ public:
 	// ---- drawing
 	STDMETHOD(DrawPrimitive)(THIS_ D3DPRIMITIVETYPE type, UINT start, UINT count) override
 	{
-		if (!m_vb) return D3D_OK;
+		++g_cnt[6];
+		if (!m_vb) { ++g_cnt[8]; return D3D_OK; }
 		const UINT verts = VertexCount(type, count);
 		return Submit(type, count, m_vb->m_data.data() + (size_t)start * m_stride, verts, nullptr, 0, 0, 0);
 	}
 	STDMETHOD(DrawIndexedPrimitive)(THIS_ D3DPRIMITIVETYPE type, UINT minIndex, UINT numVertices, UINT startIndex, UINT count) override
 	{
-		if (!m_vb || !m_ib) return D3D_OK;
+		++g_cnt[7];
+		if (!m_vb || !m_ib) { ++g_cnt[9]; return D3D_OK; }
 		const bool wide = m_ib->m_format == D3DFMT_INDEX32;
 		const UINT indices = IndexCount(type, count);
 		const UINT firstVertex = m_baseVertex + minIndex;
@@ -1035,11 +1124,13 @@ public:
 	}
 	STDMETHOD(DrawPrimitiveUP)(THIS_ D3DPRIMITIVETYPE type, UINT count, CONST void* data, UINT stride) override
 	{
+		++g_cnt[10];
 		m_stride = stride;
 		return SubmitUP(type, count, data, VertexCount(type, count), nullptr, 0, 0, stride);
 	}
 	STDMETHOD(DrawIndexedPrimitiveUP)(THIS_ D3DPRIMITIVETYPE type, UINT minIndex, UINT numVertices, UINT count, CONST void* indices, D3DFORMAT fmt, CONST void* data, UINT stride) override
 	{
+		++g_cnt[11];
 		const bool wide = fmt == D3DFMT_INDEX32;
 		return SubmitUP(type, count, (const char*)data + (size_t)minIndex * stride, numVertices, indices, IndexCount(type, count), wide ? 1 : 0, stride, (int)minIndex);
 	}
@@ -1087,14 +1178,14 @@ private:
 
 	HRESULT Submit(D3DPRIMITIVETYPE type, UINT, const void* vertices, UINT numVertices, const void* indices, UINT indexCount, int wide, int minIndex)
 	{
-		if (!B.ready || numVertices == 0)
-			return D3D_OK;
-		if (!OnBackBuffer()) { Note("skipped, render target is not the back buffer", m_vertexShader); return D3D_OK; }
-		if (m_pixelShader != 0) { Note("skipped, pixel shader", m_vertexShader); return D3D_OK; }
-		if ((m_vertexShader & 0x80000000u) || m_vertexShader == 0) { Note("skipped, vertex shader", m_vertexShader); return D3D_OK; }
-		if (m_renderStates[D3DRS_STENCILENABLE]) { Note("skipped, stencil", m_vertexShader); return D3D_OK; }		// stencil is not supported yet
+		if (!B.ready || numVertices == 0) { ++g_cnt[12]; return D3D_OK; }
+		if (!OnBackBuffer()) { ++g_cnt[1]; Note("skipped, render target is not the back buffer", m_vertexShader); return D3D_OK; }
+		if (m_pixelShader != 0) { ++g_cnt[2]; Note("skipped, pixel shader", m_vertexShader); return D3D_OK; }
+		if ((m_vertexShader & 0x80000000u) || m_vertexShader == 0) { ++g_cnt[3]; Note("skipped, vertex shader", m_vertexShader); return D3D_OK; }
+		if (m_renderStates[D3DRS_STENCILENABLE]) { ++g_cnt[4]; Note("skipped, stencil", m_vertexShader); return D3D_OK; }		// stencil is not supported yet
+		++g_cnt[0];
 		Note("drawn", m_vertexShader);
-		if (!EnsureRendering()) return D3D_OK;
+		if (!EnsureRendering()) { ++g_cnt[13]; return D3D_OK; }
 
 		const DWORD fvf = m_vertexShader;
 		const bool pretransformed = (fvf & 0xE) == 0x4;
@@ -1111,7 +1202,7 @@ private:
 			return at;
 		};
 		const VkDeviceSize vOff = take(vbytes, 16), iOff = indexCount ? take(ibytes, 4) : 0, uOff = take(sizeof(DrawUbo), B.uboAlign);
-		if (vOff == ~0ull || iOff == ~0ull || uOff == ~0ull) { Log("ring buffer exhausted, draw skipped"); return D3D_OK; }
+		if (vOff == ~0ull || iOff == ~0ull || uOff == ~0ull) { ++g_cnt[5]; return D3D_OK; }
 		memcpy((char*)B.ringAlloc.mapped + vOff, vertices, (size_t)vbytes);
 		if (indexCount)
 		{
@@ -1211,6 +1302,18 @@ private:
 		key.cull = m_renderStates[D3DRS_CULLMODE]; key.colorMask = m_renderStates[D3DRS_COLORWRITEENABLE] ? m_renderStates[D3DRS_COLORWRITEENABLE] : 0xF;
 		VkPipeline pipe = GetPipeline(key);
 		if (!pipe) return D3D_OK;
+		if (g_frame == 29999)
+		{
+			D3DSURFACE_DESC d{};
+			if (m_tex[0]) static_cast<NullTexture*>(m_tex[0])->GetLevelDesc(0, &d);
+			const float* v0 = (const float*)vertices;
+			char line[400];
+			_snprintf(line, sizeof(line), "fvf %03X prim %d verts %u idx %u tex %ux%u fmt %d | blend %u (%u,%u) zen %u zw %u cull %u | op %u/%u args %u,%u | v0 %.2f %.2f %.2f diffuse %08X",
+				fvf, (int)type, (unsigned)numVertices, indexCount, d.Width, d.Height, (int)d.Format, key.blendEnable, key.srcBlend, key.dstBlend, key.depthTest, key.depthWrite, key.cull,
+				m_stageStates[0][D3DTSS_COLOROP], m_stageStates[0][D3DTSS_ALPHAOP], m_stageStates[0][D3DTSS_COLORARG1], m_stageStates[0][D3DTSS_COLORARG2],
+				v0[0], v0[1], v0[2], (fvf & 0x40) ? *(const DWORD*)((const char*)v0 + (fvf & 0xE) * 0 + 12 + ((fvf & 0x10) ? 12 : 0)) : 0u);
+			g_drawTrace.push_back(line);
+		}
 
 		vkCmdBindPipeline(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
 		VkViewport vp{ 0, 0, (float)B.extent.width, (float)B.extent.height, 0.0f, 1.0f };
