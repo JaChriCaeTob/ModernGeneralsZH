@@ -101,6 +101,28 @@ Not done yet (next steps): the `Raw_*` functions still take Direct3D 8 types and
 `IDirect3D*8` handles). Replacing those with backend-neutral types is the next layer of work; so is folding the uncached `Raw_*`
 state calls into the wrapper's cached tracking once the stale-state risks of the direct callers are understood.
 
+### Neutral names (step 1, done)
+
+Game code no longer names Direct3D 8 constants or object types. `Core/Libraries/Source/WWVegas/WW3D2/gfx_d3d8_map.h` maps
+`GFX_RS_*`, `GFX_TSS_*`, `GFX_TOP_*`, `GFX_TA_*`, `GFX_BLEND_*`, `GFX_CMP_*`, `GFX_FMT_*`, `GFX_FVF_*`, `GFX_POOL_*`, `GFX_USAGE_*`, `GFX_LOCK_*`
+and others (303 constants) to the Direct3D 8 values, and defines `GfxDevice`, `GfxTexture`, `GfxSurface`, `GfxVertexBuffer`,
+`GfxIndexBuffer`, `GfxBaseTexture`, `GfxViewport`, `GfxLight`, `GfxMaterial`. The values are identical, so nothing changed at run time.
+Not converted yet: caps flags (`D3DPTEXTURECAPS_*` ...), error codes, vertex-shader declaration tokens (`D3DVSD_*`), and the matrix/vector
+types from D3DX. The object types are still the COM interfaces, so a backend implements the same member functions.
+
+### Null backend (step 2, done)
+
+`gfx_null.cpp` implements the Direct3D 8 object, device, surfaces, textures and buffers in system memory and draws nothing. Start the
+game with the environment variable `GENERALS_GFX=null` and `DX8Wrapper::Init` uses it instead of loading `D3D8.DLL`.
+`gfx_null_stubs.inl` is generated from `d3d8.h` by `scripts/gen_null_stubs.py` (every method of nine interfaces with a harmless default);
+`gfx_null.cpp` overrides what has to do real work (caps, adapter modes, memory-backed resources, state read-back).
+
+Result: the game starts, loads the shell map, accepts menu clicks, starts a skirmish and runs with no `d3d8.dll`, `d3d9.dll` or
+`vulkan-1.dll` in the process. So the interfaces behind `DX8Wrapper` are the whole graphics boundary. The null device also logs its frame
+rate to `gfx_null_fps.txt` (one line per 5 s). Measured on the test machine, with nothing drawn: shell scene about 610 fps, skirmish about
+1,350 fps. With DXVK on the GPU the same scenes ran at about 400-800 and 1,100-1,290 fps. The game's own CPU work (simulation, scene
+traversal, draw call generation) is therefore the limit, and a different graphics backend can recover at most the remaining 10-20 %.
+
 ## Open points / ideas
 
 - A native renderer behind `DX8Wrapper` would remove the need for a patched translation layer.

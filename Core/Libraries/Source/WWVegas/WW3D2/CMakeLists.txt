@@ -66,6 +66,10 @@ set(WW3D2_SRC
     dx8webbrowser.cpp
     dx8webbrowser.h
     dx8wrapper.cpp
+    gfx_null.cpp
+    gfx_null.h
+    gfx_null_stubs.inl
+    gfx_d3d8_map.h
     dx8wrapper.h
     dynamesh.cpp
     dynamesh.h

@@ -51,6 +51,7 @@
 #endif
 
 #include "dx8wrapper.h"
+#include "gfx_null.h"
 #include "dx8webbrowser.h"
 #include "dx8fvf.h"
 #include "dx8vertexbuffer.h"
@@ -292,12 +293,20 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 	Invalidate_Cached_Render_States();
 
 	if (!lite) {
-		D3D8Lib = LoadLibrary("D3D8.DLL");
+		if (NullGfx_Requested())
+		{
+			// GENERALS_GFX=null: run against the in-memory null backend instead of a Direct3D 8 library
+			Direct3DCreate8Ptr = NullGfx_Direct3DCreate8;
+		}
+		else
+		{
+			D3D8Lib = LoadLibrary("D3D8.DLL");
 
-		if (D3D8Lib == nullptr) return false;	// Return false at this point if init failed
+			if (D3D8Lib == nullptr) return false;	// Return false at this point if init failed
 
-		Direct3DCreate8Ptr = (Direct3DCreate8Type) GetProcAddress(D3D8Lib, "Direct3DCreate8");
-		if (Direct3DCreate8Ptr == nullptr) return false;
+			Direct3DCreate8Ptr = (Direct3DCreate8Type) GetProcAddress(D3D8Lib, "Direct3DCreate8");
+			if (Direct3DCreate8Ptr == nullptr) return false;
+		}
 
 		/*
 		** Create the D3D interface object
