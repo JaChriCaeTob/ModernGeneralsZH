@@ -112,7 +112,7 @@ W3DMouse::~W3DMouse()
 
 	if (m_pDev)
 	{
-		m_pDev->ShowCursor(FALSE);	//kill DX8 cursor
+		DX8Wrapper::Raw_Show_Cursor(FALSE);	//kill DX8 cursor
 		Win32Mouse::setCursor(ARROW); //enable default windows cursor
 	}
 
@@ -396,7 +396,7 @@ void W3DMouse::setCursor( MouseCursor cursor )
 
 		if (m_pDev != nullptr)
 		{
-			m_pDev->ShowCursor(FALSE);	//disable DX8 cursor
+			DX8Wrapper::Raw_Show_Cursor(FALSE);	//disable DX8 cursor
 			if (cursor != m_currentD3DCursor)
 			{	if (!isThread)
 				{	releaseD3DCursorTextures(m_currentD3DCursor);
@@ -416,8 +416,8 @@ void W3DMouse::setCursor( MouseCursor cursor )
 			m_currentHotSpot = m_cursorInfo[cursor].hotSpotPosition;
 			m_currentFMS = m_cursorInfo[cursor].fps/1000.0f;
 			m_currentAnimFrame = 0;	//reset animation when cursor changes
-			res = m_pDev->SetCursorProperties(m_currentHotSpot.x,m_currentHotSpot.y,m_currentD3DSurface[(Int)m_currentAnimFrame]->Peek_D3D_Surface());
-			m_pDev->ShowCursor(TRUE);	//Enable DX8 cursor
+			res = DX8Wrapper::Raw_Set_Cursor_Properties(m_currentHotSpot.x,m_currentHotSpot.y,m_currentD3DSurface[(Int)m_currentAnimFrame]->Peek_D3D_Surface());
+			DX8Wrapper::Raw_Show_Cursor(TRUE);	//Enable DX8 cursor
 			m_currentD3DFrame=(Int)m_currentAnimFrame;
 			m_currentD3DCursor = cursor;
 			m_lastAnimTime=timeGetTime();
@@ -489,7 +489,7 @@ void W3DMouse::draw()
 		//to draw the mouse cursor.
 		LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
 		if (m_pDev)
-		{	m_pDev->ShowCursor(TRUE);	//Enable DX8 cursor
+		{	DX8Wrapper::Raw_Show_Cursor(TRUE);	//Enable DX8 cursor
 
 			if (TheDisplay && !TheDisplay->getWindowed())
 			{
@@ -498,7 +498,7 @@ void W3DMouse::draw()
 
 				GetCursorPos( &ptCursor );
 				ScreenToClient( ApplicationHWnd, &ptCursor );
-				m_pDev->SetCursorPosition( ptCursor.x, ptCursor.y, D3DCURSOR_IMMEDIATE_UPDATE);
+				DX8Wrapper::Raw_Set_Cursor_Position( ptCursor.x, ptCursor.y, D3DCURSOR_IMMEDIATE_UPDATE);
 			}
 			//Check if animated cursor and new frame
 			if (m_currentFrames > 1)
@@ -511,7 +511,7 @@ void W3DMouse::draw()
 				if ((Int)m_currentAnimFrame != m_currentD3DFrame)
 				{
 					m_currentD3DFrame=(Int)m_currentAnimFrame;
-					m_pDev->SetCursorProperties(m_currentHotSpot.x,m_currentHotSpot.y,m_currentD3DSurface[m_currentD3DFrame]->Peek_D3D_Surface());
+					DX8Wrapper::Raw_Set_Cursor_Properties(m_currentHotSpot.x,m_currentHotSpot.y,m_currentD3DSurface[m_currentD3DFrame]->Peek_D3D_Surface());
 				}
 			}
 		}

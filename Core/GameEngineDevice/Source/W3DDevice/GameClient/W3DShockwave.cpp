@@ -137,7 +137,6 @@ void W3DShockwave::render()
 	REF_PTR_RELEASE(captureSurface);
 	REF_PTR_RELEASE(backBuffer);
 
-	LPDIRECT3DDEVICE8 dev = DX8Wrapper::_Get_D3D_Device8();
 
 	Int ox, oy;
 	TheTacticalView->getOrigin(&ox, &oy);
@@ -177,8 +176,8 @@ void W3DShockwave::render()
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
 	DX8Wrapper::Set_DX8_Texture_Stage_State(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
 
-	dev->SetTexture(0, g_capture->Peek_D3D_Texture());
-	dev->SetVertexShader(kFvf);
+	DX8Wrapper::Raw_Set_Texture(0, g_capture->Peek_D3D_Texture());
+	DX8Wrapper::Raw_Set_Vertex_Shader(kFvf);
 
 	const UnsignedInt now = timeGetTime();
 	static std::vector<ScreenVertex> verts;
@@ -263,10 +262,10 @@ void W3DShockwave::render()
 				indices.push_back(i1); indices.push_back(i2); indices.push_back(i3);
 			}
 
-		dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, (UINT)verts.size(), (UINT)(indices.size() / 3),
+		DX8Wrapper::Raw_Draw_Indexed_Primitive_UP(D3DPT_TRIANGLELIST, 0, (UINT)verts.size(), (UINT)(indices.size() / 3),
 			&indices[0], D3DFMT_INDEX16, &verts[0], sizeof(ScreenVertex));
 	}
 
-	dev->SetTexture(0, nullptr);
+	DX8Wrapper::Raw_Set_Texture(0, nullptr);
 	DX8Wrapper::Invalidate_Cached_Render_States();
 }

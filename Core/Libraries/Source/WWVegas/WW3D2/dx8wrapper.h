@@ -336,6 +336,44 @@ public:
 	static void Set_DX8_Clip_Plane(DWORD Index, CONST float* pPlane);
 	static void Set_DX8_Texture_Stage_State(unsigned stage, D3DTEXTURESTAGESTATETYPE state, unsigned value);
 	static void Set_DX8_Texture(unsigned int stage, IDirect3DBaseTexture8* texture);
+
+	// ---- Raw device access ----
+	// Uncached forwards to the device, with exactly the behaviour of calling it directly. Code that has to bypass the
+	// wrapper's deferred state tracking (water, shadows, screen filters, ...) uses these instead of _Get_D3D_Device8(),
+	// so a different graphics backend only has to implement this group. See docs/RENDER_CALLSITES.md.
+	static HRESULT Raw_Set_Render_State(D3DRENDERSTATETYPE state, DWORD value);
+	static HRESULT Raw_Get_Render_State(D3DRENDERSTATETYPE state, DWORD* value);
+	static HRESULT Raw_Set_Texture_Stage_State(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value);
+	static HRESULT Raw_Set_Texture(DWORD stage, IDirect3DBaseTexture8* texture);
+	static HRESULT Raw_Create_Pixel_Shader(const DWORD* function, DWORD* handle);
+	static HRESULT Raw_Delete_Pixel_Shader(DWORD handle);
+	static HRESULT Raw_Set_Pixel_Shader(DWORD handle);
+	static HRESULT Raw_Set_Pixel_Shader_Constant(DWORD reg, const void* data, DWORD count);
+	static HRESULT Raw_Delete_Vertex_Shader(DWORD handle);
+	static HRESULT Raw_Set_Vertex_Shader(DWORD handle);
+	static HRESULT Raw_Set_Vertex_Shader_Constant(DWORD reg, const void* data, DWORD count);
+	static HRESULT Raw_Set_Stream_Source(UINT stream, IDirect3DVertexBuffer8* vb, UINT stride);
+	static HRESULT Raw_Set_Indices(IDirect3DIndexBuffer8* ib, UINT base_vertex);
+	static HRESULT Raw_Draw_Indexed_Primitive(D3DPRIMITIVETYPE type, UINT min_index, UINT num_vertices, UINT start_index, UINT primitive_count);
+	static HRESULT Raw_Get_Viewport(D3DVIEWPORT8* viewport);
+	static HRESULT Raw_Create_Vertex_Buffer(UINT length, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer8** vb);
+	static HRESULT Raw_Create_Index_Buffer(UINT length, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DIndexBuffer8** ib);
+	static HRESULT Raw_Create_Texture(UINT width, UINT height, UINT levels, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DTexture8** texture);
+	static HRESULT Raw_Set_Transform(D3DTRANSFORMSTATETYPE type, const D3DMATRIX* matrix);
+	static HRESULT Raw_Draw_Primitive(D3DPRIMITIVETYPE type, UINT start_vertex, UINT primitive_count);
+	static HRESULT Raw_Draw_Primitive_UP(D3DPRIMITIVETYPE type, UINT primitive_count, const void* vertices, UINT stride);
+	static HRESULT Raw_Draw_Indexed_Primitive_UP(D3DPRIMITIVETYPE type, UINT min_index, UINT num_vertices, UINT primitive_count, const void* indices, D3DFORMAT index_format, const void* vertices, UINT stride);
+	static HRESULT Raw_Set_Render_Target(IDirect3DSurface8* target, IDirect3DSurface8* depth_stencil);
+	static HRESULT Raw_Get_Render_Target(IDirect3DSurface8** target);
+	static HRESULT Raw_Get_Depth_Stencil_Surface(IDirect3DSurface8** surface);
+	static HRESULT Raw_Create_Vertex_Shader(const DWORD* declaration, const DWORD* function, DWORD* handle, DWORD usage);
+	static HRESULT Raw_Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** surface);
+	static HRESULT Raw_Copy_Rects(IDirect3DSurface8* source, const RECT* source_rects, UINT rect_count, IDirect3DSurface8* destination, const POINT* destination_points);
+	static HRESULT Raw_Process_Vertices(UINT source_start, UINT destination_index, UINT vertex_count, IDirect3DVertexBuffer8* destination, DWORD flags);
+	static HRESULT Raw_Test_Cooperative_Level();
+	static BOOL Raw_Show_Cursor(BOOL show);
+	static HRESULT Raw_Set_Cursor_Properties(UINT hot_x, UINT hot_y, IDirect3DSurface8* bitmap);
+	static void Raw_Set_Cursor_Position(int x, int y, DWORD flags);
 	static void Set_Light_Environment(LightEnvironmentClass* light_env);
 	static LightEnvironmentClass* Get_Light_Environment() { return Light_Environment; }
 	static void Set_Fog(bool enable, const Vector3 &color, float start, float end);
@@ -874,6 +912,173 @@ WWINLINE void DX8Wrapper::Set_DX8_Clip_Plane(DWORD Index, CONST float* pPlane)
 {
 	DX8CALL(SetClipPlane( Index, pPlane ));
 }
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Render_State(D3DRENDERSTATETYPE state, DWORD value)
+{
+	return D3DDevice->SetRenderState(state, value);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Get_Render_State(D3DRENDERSTATETYPE state, DWORD* value)
+{
+	return D3DDevice->GetRenderState(state, value);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Texture_Stage_State(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value)
+{
+	return D3DDevice->SetTextureStageState(stage, type, value);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Texture(DWORD stage, IDirect3DBaseTexture8* texture)
+{
+	return D3DDevice->SetTexture(stage, texture);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Pixel_Shader(const DWORD* function, DWORD* handle)
+{
+	return D3DDevice->CreatePixelShader(function, handle);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Delete_Pixel_Shader(DWORD handle)
+{
+	return D3DDevice->DeletePixelShader(handle);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Pixel_Shader(DWORD handle)
+{
+	return D3DDevice->SetPixelShader(handle);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Pixel_Shader_Constant(DWORD reg, const void* data, DWORD count)
+{
+	return D3DDevice->SetPixelShaderConstant(reg, data, count);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Delete_Vertex_Shader(DWORD handle)
+{
+	return D3DDevice->DeleteVertexShader(handle);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Vertex_Shader(DWORD handle)
+{
+	return D3DDevice->SetVertexShader(handle);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Vertex_Shader_Constant(DWORD reg, const void* data, DWORD count)
+{
+	return D3DDevice->SetVertexShaderConstant(reg, data, count);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Stream_Source(UINT stream, IDirect3DVertexBuffer8* vb, UINT stride)
+{
+	return D3DDevice->SetStreamSource(stream, vb, stride);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Indices(IDirect3DIndexBuffer8* ib, UINT base_vertex)
+{
+	return D3DDevice->SetIndices(ib, base_vertex);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Draw_Indexed_Primitive(D3DPRIMITIVETYPE type, UINT min_index, UINT num_vertices, UINT start_index, UINT primitive_count)
+{
+	return D3DDevice->DrawIndexedPrimitive(type, min_index, num_vertices, start_index, primitive_count);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Get_Viewport(D3DVIEWPORT8* viewport)
+{
+	return D3DDevice->GetViewport(viewport);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Vertex_Buffer(UINT length, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer8** vb)
+{
+	return D3DDevice->CreateVertexBuffer(length, usage, fvf, pool, vb);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Index_Buffer(UINT length, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DIndexBuffer8** ib)
+{
+	return D3DDevice->CreateIndexBuffer(length, usage, format, pool, ib);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Texture(UINT width, UINT height, UINT levels, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DTexture8** texture)
+{
+	return D3DDevice->CreateTexture(width, height, levels, usage, format, pool, texture);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Transform(D3DTRANSFORMSTATETYPE type, const D3DMATRIX* matrix)
+{
+	return D3DDevice->SetTransform(type, matrix);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Draw_Primitive(D3DPRIMITIVETYPE type, UINT start_vertex, UINT primitive_count)
+{
+	return D3DDevice->DrawPrimitive(type, start_vertex, primitive_count);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Draw_Primitive_UP(D3DPRIMITIVETYPE type, UINT primitive_count, const void* vertices, UINT stride)
+{
+	return D3DDevice->DrawPrimitiveUP(type, primitive_count, vertices, stride);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Draw_Indexed_Primitive_UP(D3DPRIMITIVETYPE type, UINT min_index, UINT num_vertices, UINT primitive_count, const void* indices, D3DFORMAT index_format, const void* vertices, UINT stride)
+{
+	return D3DDevice->DrawIndexedPrimitiveUP(type, min_index, num_vertices, primitive_count, indices, index_format, vertices, stride);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Render_Target(IDirect3DSurface8* target, IDirect3DSurface8* depth_stencil)
+{
+	return D3DDevice->SetRenderTarget(target, depth_stencil);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Get_Render_Target(IDirect3DSurface8** target)
+{
+	return D3DDevice->GetRenderTarget(target);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Get_Depth_Stencil_Surface(IDirect3DSurface8** surface)
+{
+	return D3DDevice->GetDepthStencilSurface(surface);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Vertex_Shader(const DWORD* declaration, const DWORD* function, DWORD* handle, DWORD usage)
+{
+	return D3DDevice->CreateVertexShader(declaration, function, handle, usage);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** surface)
+{
+	return D3DDevice->CreateImageSurface(width, height, format, surface);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Copy_Rects(IDirect3DSurface8* source, const RECT* source_rects, UINT rect_count, IDirect3DSurface8* destination, const POINT* destination_points)
+{
+	return D3DDevice->CopyRects(source, source_rects, rect_count, destination, destination_points);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Process_Vertices(UINT source_start, UINT destination_index, UINT vertex_count, IDirect3DVertexBuffer8* destination, DWORD flags)
+{
+	return D3DDevice->ProcessVertices(source_start, destination_index, vertex_count, destination, flags);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Test_Cooperative_Level()
+{
+	return D3DDevice->TestCooperativeLevel();
+}
+
+WWINLINE BOOL DX8Wrapper::Raw_Show_Cursor(BOOL show)
+{
+	return D3DDevice->ShowCursor(show);
+}
+
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Cursor_Properties(UINT hot_x, UINT hot_y, IDirect3DSurface8* bitmap)
+{
+	return D3DDevice->SetCursorProperties(hot_x, hot_y, bitmap);
+}
+
+WWINLINE void DX8Wrapper::Raw_Set_Cursor_Position(int x, int y, DWORD flags)
+{
+	D3DDevice->SetCursorPosition(x, y, flags);
+}
+
+
 
 WWINLINE void DX8Wrapper::Set_DX8_Texture_Stage_State(unsigned stage, D3DTEXTURESTAGESTATETYPE state, unsigned value)
 {
