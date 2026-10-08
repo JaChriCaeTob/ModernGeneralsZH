@@ -167,7 +167,7 @@ void W3DShroud::init(WorldHeightMap *pMap, Real worldCellSizeX, Real worldCellSi
 	D3DLOCKED_RECT rect;
 
 	//Get a pointer to source surface pixels.
-	HRESULT res = m_pSrcTexture->LockRect(&rect,nullptr,D3DLOCK_NO_DIRTY_UPDATE);
+	HRESULT res = m_pSrcTexture->LockRect(&rect,nullptr,GFX_LOCK_NO_DIRTY_UPDATE);
 	m_pSrcTexture->UnlockRect();
 
 	DEBUG_ASSERTCRASH( res == D3D_OK, ("Failed to lock shroud src surface"));

@@ -488,7 +488,7 @@ RenderObjClass *	 WaterRenderObjClass::Clone() const
 /** Copies raw bits from pBumpSrc (a regular grayscale texture) into a D3D
 	*   bump-map format. */
 //-------------------------------------------------------------------------------------------------
-HRESULT WaterRenderObjClass::initBumpMap(LPDIRECT3DTEXTURE8 *pTex, TextureClass *pBumpSource)
+HRESULT WaterRenderObjClass::initBumpMap(GfxTexture* *pTex, TextureClass *pBumpSource)
 {
     SurfaceClass::SurfaceDescription    d3dsd;
 	SurfaceClass * surf;
@@ -515,7 +515,7 @@ HRESULT WaterRenderObjClass::initBumpMap(LPDIRECT3DTEXTURE8 *pTex, TextureClass 
 	else
 		return S_OK;
 
-	pTex[0]=DX8Wrapper::_Create_DX8_Texture(d3dsd.Width,d3dsd.Height,WW3D_FORMAT_U8V8,MIP_LEVELS_ALL,D3DPOOL_MANAGED,false);
+	pTex[0]=DX8Wrapper::_Create_DX8_Texture(d3dsd.Width,d3dsd.Height,WW3D_FORMAT_U8V8,MIP_LEVELS_ALL,GFX_POOL_MANAGED,false);
 
 	for (Int level=0; level < numLevels; level++)
 	{
@@ -560,21 +560,21 @@ HRESULT WaterRenderObjClass::initBumpMap(LPDIRECT3DTEXTURE8 *pTex, TextureClass 
 				// The luminance bump value (land masses are less shiny)
 				WORD uL = ( v00>1 ) ? 63 : 127;
 
-				switch( D3DFMT_V8U8)//m_BumpMapFormat )
+				switch( GFX_FMT_V8U8)//m_BumpMapFormat )
 				{
-					case D3DFMT_V8U8:
+					case GFX_FMT_V8U8:
 						*pDstT++ = (BYTE)iDu;
 						*pDstT++ = (BYTE)iDv;
 						break;
 
-					case D3DFMT_L6V5U5:
+					case GFX_FMT_L6V5U5:
 						*(WORD*)pDstT  = (WORD)( ( (iDu>>3) & 0x1f ) <<  0 );
 						*(WORD*)pDstT |= (WORD)( ( (iDv>>3) & 0x1f ) <<  5 );
 						*(WORD*)pDstT |= (WORD)( ( ( uL>>2) & 0x3f ) << 10 );
 						pDstT += 2;
 						break;
 
-					case D3DFMT_X8L8V8U8:
+					case GFX_FMT_X8L8V8U8:
 						*pDstT++ = (BYTE)iDu;
 						*pDstT++ = (BYTE)iDv;
 						*pDstT++ = (BYTE)uL;
@@ -601,7 +601,7 @@ HRESULT WaterRenderObjClass::initBumpMap(LPDIRECT3DTEXTURE8 *pTex, TextureClass 
 	pSrc=(unsigned char *)surf->Lock((int *)&dwSrcPitch);
 
     // Create the bumpmap's surface and texture objects
-	m_pBumpTexture[i]=DX8Wrapper::_Create_DX8_Texture(d3dsd.Width,d3dsd.Height,WW3D_FORMAT_U8V8,TextureClass::MIP_LEVELS_1,D3DPOOL_MANAGED,false);
+	m_pBumpTexture[i]=DX8Wrapper::_Create_DX8_Texture(d3dsd.Width,d3dsd.Height,WW3D_FORMAT_U8V8,TextureClass::MIP_LEVELS_1,GFX_POOL_MANAGED,false);
 
     // Fill the bits of the new texture surface with bits from
     // a private format.
@@ -643,21 +643,21 @@ HRESULT WaterRenderObjClass::initBumpMap(LPDIRECT3DTEXTURE8 *pTex, TextureClass 
             // The luminance bump value (land masses are less shiny)
             WORD uL = ( v00>1 ) ? 63 : 127;
 
-            switch( D3DFMT_V8U8)//m_BumpMapFormat )
+            switch( GFX_FMT_V8U8)//m_BumpMapFormat )
             {
-                case D3DFMT_V8U8:
+                case GFX_FMT_V8U8:
                     *pDstT++ = (BYTE)iDu;
                     *pDstT++ = (BYTE)iDv;
                     break;
 
-                case D3DFMT_L6V5U5:
+                case GFX_FMT_L6V5U5:
                     *(WORD*)pDstT  = (WORD)( ( (iDu>>3) & 0x1f ) <<  0 );
                     *(WORD*)pDstT |= (WORD)( ( (iDv>>3) & 0x1f ) <<  5 );
                     *(WORD*)pDstT |= (WORD)( ( ( uL>>2) & 0x3f ) << 10 );
                     pDstT += 2;
                     break;
 
-                case D3DFMT_X8L8V8U8:
+                case GFX_FMT_X8L8V8U8:
                     *pDstT++ = (BYTE)iDu;
                     *pDstT++ = (BYTE)iDv;
                     *pDstT++ = (BYTE)uL;
@@ -697,15 +697,15 @@ HRESULT WaterRenderObjClass::generateVertexBuffer( Int sizeX, Int sizeY, Int ver
 	HRESULT hr;
 
 	//default setting for a dynamic vertex buffer
-	D3DPOOL pool = D3DPOOL_DEFAULT;
-	DWORD usage = D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC;
+	D3DPOOL pool = GFX_POOL_DEFAULT;
+	DWORD usage = GFX_USAGE_WRITEONLY | GFX_USAGE_DYNAMIC;
 	DWORD fvf = WATER_MESH_FVF;
 
 	if (doStatic)
 	{
 		//change settings for a static vertex buffer
-		pool = D3DPOOL_MANAGED;
-		usage = D3DUSAGE_WRITEONLY;
+		pool = GFX_POOL_MANAGED;
+		usage = GFX_USAGE_WRITEONLY;
 		fvf=0;// DX8 Docs confusing on this. Say no FVF for vertex shaders. Else DX8_FVF_XYZDUV1;
 		m_numVertices=sizeX*sizeY;
 	}
@@ -735,7 +735,7 @@ HRESULT WaterRenderObjClass::generateVertexBuffer( Int sizeX, Int sizeY, Int ver
 		0,
 		m_numVertices*sizeof(SEA_PATCH_VERTEX),
 		(BYTE**)&pVertices,
-		0//D3DLOCK_DISCARD
+		0//GFX_LOCK_DISCARD
 	)))
 		return hr;
 
@@ -780,9 +780,9 @@ HRESULT WaterRenderObjClass::generateIndexBuffer(Int sizeX, Int sizeY)
 
 	if (FAILED(hr=DX8Wrapper::Raw_Create_Index_Buffer(
 		(m_numIndices+2)*sizeof(WORD),
-		D3DUSAGE_WRITEONLY,
-		D3DFMT_INDEX16,
-		D3DPOOL_MANAGED,
+		GFX_USAGE_WRITEONLY,
+		GFX_FMT_INDEX16,
+		GFX_POOL_MANAGED,
 		&m_indexBufferD3D
 	)))
 		return hr;
@@ -1631,7 +1631,7 @@ void WaterRenderObjClass::renderMirror(CameraClass *cam)
 	WW3D::End_Render(false);
 
 	// Change the rendertarget back to the main backbuffer
-	DX8Wrapper::Set_Render_Target((IDirect3DSurface8 *)nullptr);
+	DX8Wrapper::Set_Render_Target((GfxSurface *)nullptr);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2428,13 +2428,13 @@ void WaterRenderObjClass::renderWaterMesh()
 	if (m_vertexBufferD3DOffset < m_numVertices)
 	{
 		//we have room in current VB, append new verts
-		if(m_vertexBufferD3D->Lock(m_vertexBufferD3DOffset*sizeof(MaterMeshVertexFormat),mx*my*sizeof(MaterMeshVertexFormat),(unsigned char**)&vb,D3DLOCK_NOOVERWRITE) != D3D_OK)
+		if(m_vertexBufferD3D->Lock(m_vertexBufferD3DOffset*sizeof(MaterMeshVertexFormat),mx*my*sizeof(MaterMeshVertexFormat),(unsigned char**)&vb,GFX_LOCK_NOOVERWRITE) != D3D_OK)
 			return;
 	}
 	else
 	{
 		//ran out of room in last VB, request a substitute VB.
-		if(m_vertexBufferD3D->Lock(0,mx*my*sizeof(MaterMeshVertexFormat),(unsigned char**)&vb,D3DLOCK_DISCARD) != D3D_OK)
+		if(m_vertexBufferD3D->Lock(0,mx*my*sizeof(MaterMeshVertexFormat),(unsigned char**)&vb,GFX_LOCK_DISCARD) != D3D_OK)
 			return;
 		m_vertexBufferD3DOffset=0;	//reset start of page to first vertex
 	}
@@ -2885,7 +2885,7 @@ void WaterRenderObjClass::ensureDepthMap()
 	m_depthMapMin = 0.0f;
 	m_depthMapRange = 255.0f * MAP_HEIGHT_SCALE;
 
-	if (FAILED(DX8Wrapper::Raw_Create_Texture(w, h, 1, 0, D3DFMT_L8, D3DPOOL_MANAGED, &m_depthMapTexture)))
+	if (FAILED(DX8Wrapper::Raw_Create_Texture(w, h, 1, 0, GFX_FMT_L8, GFX_POOL_MANAGED, &m_depthMapTexture)))
 	{
 		m_depthMapTexture = nullptr;
 		return;
@@ -3131,7 +3131,7 @@ void WaterRenderObjClass::setupUpdatedWaterStages(Real waterZ)
 		}
 	}
 
-	D3DVIEWPORT8 vp;
+	GfxViewport vp;
 	DX8Wrapper::Raw_Get_Viewport(&vp);
 	const Real tw = (Real)m_sceneCaptureW;
 	const Real th = (Real)m_sceneCaptureH;

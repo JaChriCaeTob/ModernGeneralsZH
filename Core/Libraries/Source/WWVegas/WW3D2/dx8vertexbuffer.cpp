@@ -324,7 +324,7 @@ DX8VertexBufferClass::DX8VertexBufferClass(
 	unsigned short VertexCount,
 	UsageType usage)
 	:
-	VertexBufferClass(BUFFER_TYPE_DX8, D3DFVF_XYZ|D3DFVF_TEX1|D3DFVF_NORMAL, VertexCount),
+	VertexBufferClass(BUFFER_TYPE_DX8, GFX_FVF_XYZ|GFX_FVF_TEX1|GFX_FVF_NORMAL, VertexCount),
 	VertexBuffer(nullptr)
 {
 	WWASSERT(vertices);
@@ -345,7 +345,7 @@ DX8VertexBufferClass::DX8VertexBufferClass(
 	unsigned short VertexCount,
 	UsageType usage)
 	:
-	VertexBufferClass(BUFFER_TYPE_DX8, D3DFVF_XYZ|D3DFVF_TEX1|D3DFVF_NORMAL|D3DFVF_DIFFUSE, VertexCount),
+	VertexBufferClass(BUFFER_TYPE_DX8, GFX_FVF_XYZ|GFX_FVF_TEX1|GFX_FVF_NORMAL|GFX_FVF_DIFFUSE, VertexCount),
 	VertexBuffer(nullptr)
 {
 	WWASSERT(vertices);
@@ -366,7 +366,7 @@ DX8VertexBufferClass::DX8VertexBufferClass(
 	unsigned short VertexCount,
 	UsageType usage)
 	:
-	VertexBufferClass(BUFFER_TYPE_DX8, D3DFVF_XYZ|D3DFVF_TEX1|D3DFVF_DIFFUSE, VertexCount),
+	VertexBufferClass(BUFFER_TYPE_DX8, GFX_FVF_XYZ|GFX_FVF_TEX1|GFX_FVF_DIFFUSE, VertexCount),
 	VertexBuffer(nullptr)
 {
 	WWASSERT(vertices);
@@ -385,7 +385,7 @@ DX8VertexBufferClass::DX8VertexBufferClass(
 	unsigned short VertexCount,
 	UsageType usage)
 	:
-	VertexBufferClass(BUFFER_TYPE_DX8, D3DFVF_XYZ|D3DFVF_TEX1, VertexCount),
+	VertexBufferClass(BUFFER_TYPE_DX8, GFX_FVF_XYZ|GFX_FVF_TEX1, VertexCount),
 	VertexBuffer(nullptr)
 {
 	WWASSERT(vertices);
@@ -433,20 +433,20 @@ void DX8VertexBufferClass::Create_Vertex_Buffer(UsageType usage)
 #endif
 
 	unsigned usage_flags=
-		D3DUSAGE_WRITEONLY|
-		((usage&USAGE_DYNAMIC) ? D3DUSAGE_DYNAMIC : 0)|
-		((usage&USAGE_NPATCHES) ? D3DUSAGE_NPATCHES : 0)|
-		((usage&USAGE_SOFTWAREPROCESSING) ? D3DUSAGE_SOFTWAREPROCESSING : 0);
+		GFX_USAGE_WRITEONLY|
+		((usage&USAGE_DYNAMIC) ? GFX_USAGE_DYNAMIC : 0)|
+		((usage&USAGE_NPATCHES) ? GFX_USAGE_NPATCHES : 0)|
+		((usage&USAGE_SOFTWAREPROCESSING) ? GFX_USAGE_SOFTWAREPROCESSING : 0);
 	// New Code
 	if (!DX8Wrapper::Get_Current_Caps()->Support_TnL()) {
-		usage_flags|=D3DUSAGE_SOFTWAREPROCESSING;
+		usage_flags|=GFX_USAGE_SOFTWAREPROCESSING;
 	}
 
 	HRESULT ret=DX8Wrapper::_Get_D3D_Device8()->CreateVertexBuffer(
 		FVF_Info().Get_FVF_Size()*VertexCount,
 		usage_flags,
 		FVF_Info().Get_FVF(),
-		(usage&USAGE_DYNAMIC) ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED,
+		(usage&USAGE_DYNAMIC) ? GFX_POOL_DEFAULT : GFX_POOL_MANAGED,
 		&VertexBuffer);
 	if (SUCCEEDED(ret)) {
 		return;
@@ -470,7 +470,7 @@ void DX8VertexBufferClass::Create_Vertex_Buffer(UsageType usage)
 		FVF_Info().Get_FVF_Size()*VertexCount,
 		usage_flags,
 		FVF_Info().Get_FVF(),
-		(usage&USAGE_DYNAMIC) ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED,
+		(usage&USAGE_DYNAMIC) ? GFX_POOL_DEFAULT : GFX_POOL_MANAGED,
 		&VertexBuffer);
 
 	if (SUCCEEDED(ret)) {
@@ -485,7 +485,7 @@ void DX8VertexBufferClass::Create_Vertex_Buffer(UsageType usage)
 		FVF_Info().Get_FVF_Size()*VertexCount,
 		usage_flags,
 		FVF_Info().Get_FVF(),
-		(usage&USAGE_DYNAMIC) ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED,
+		(usage&USAGE_DYNAMIC) ? GFX_POOL_DEFAULT : GFX_POOL_MANAGED,
 		&VertexBuffer));
 	*/
 }
@@ -853,7 +853,7 @@ DynamicVBAccessClass::WriteLockClass::WriteLockClass(DynamicVBAccessClass* dynam
 			DynamicVBAccess->VertexBufferOffset*_DynamicDX8VertexBuffer->FVF_Info().Get_FVF_Size(),
 			DynamicVBAccess->Get_Vertex_Count()*DynamicVBAccess->VertexBuffer->FVF_Info().Get_FVF_Size(),
 			(unsigned char**)&Vertices,
-			D3DLOCK_NOSYSLOCK | (!DynamicVBAccess->VertexBufferOffset ? D3DLOCK_DISCARD : D3DLOCK_NOOVERWRITE)));
+			GFX_LOCK_NOSYSLOCK | (!DynamicVBAccess->VertexBufferOffset ? GFX_LOCK_DISCARD : GFX_LOCK_NOOVERWRITE)));
 		break;
 	case BUFFER_TYPE_DYNAMIC_SORTING:
 		Vertices=static_cast<SortingVertexBufferClass*>(DynamicVBAccess->VertexBuffer)->VertexBuffer;

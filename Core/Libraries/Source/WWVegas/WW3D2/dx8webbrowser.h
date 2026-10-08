@@ -49,7 +49,7 @@
 #define BROWSEROPTION_SCROLLBARS		0x0001
 #define BROWSEROPTION_3DBORDER		0x0002
 
-struct IDirect3DDevice8;
+#include "gfx_d3d8_map.h"
 
 /**
 ** DX8WebBrowser

@@ -112,7 +112,7 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 		return;
 	}
 
-	IDirect3DSurface8 *backBufferSurface = backBuffer->Peek_D3D_Surface();
+	GfxSurface *backBufferSurface = backBuffer->Peek_D3D_Surface();
 	D3DSURFACE_DESC backBufferSurfaceDesc;
 	HRESULT hr = backBufferSurface->GetDesc(&backBufferSurfaceDesc);
 	if (FAILED(hr))
@@ -124,14 +124,14 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 	}
 
 	// allocate intermediate texture
-	IDirect3DTexture8 *intermediateTexture = nullptr;
+	GfxTexture *intermediateTexture = nullptr;
 	hr = DX8Wrapper::Raw_Create_Texture(
 		backBufferSurfaceDesc.Width,
 		backBufferSurfaceDesc.Height,
 		1,
-		D3DUSAGE_RENDERTARGET,
+		GFX_USAGE_RENDERTARGET,
 		backBufferSurfaceDesc.Format,
-		D3DPOOL_DEFAULT,
+		GFX_POOL_DEFAULT,
 		&intermediateTexture);
 	if (FAILED(hr))
 	{
@@ -142,7 +142,7 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 	}
 
 	// draw backbuffer to intermediate texture
-	IDirect3DSurface8 *intermediateTextureSurface;
+	GfxSurface *intermediateTextureSurface;
 	hr = intermediateTexture->GetSurfaceLevel(0, &intermediateTextureSurface);
 	if (FAILED(hr))
 	{
@@ -161,19 +161,19 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 	REF_PTR_RELEASE(backBuffer);
 
 	// set render target to a small surface
-	IDirect3DSurface8 *smallRenderTargetSurface = renderTarget->Get_D3D_Surface_Level();
+	GfxSurface *smallRenderTargetSurface = renderTarget->Get_D3D_Surface_Level();
 	WWASSERT(smallRenderTargetSurface != nullptr);
 	DX8Wrapper::Set_Render_Target(smallRenderTargetSurface, false);
 
 	// set viewport
-	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
-	D3DVIEWPORT8 restoreViewport;
+	GfxDevice *device = DX8Wrapper::_Get_D3D_Device8();
+	GfxViewport restoreViewport;
 	DX8Wrapper::Raw_Get_Viewport(&restoreViewport);
 
 	SurfaceClass::SurfaceDescription smallRenderDesc;
 	surfaceClass->Get_Description(smallRenderDesc);
 
-	D3DVIEWPORT8 viewport;
+	GfxViewport viewport;
 	viewport.X = 0;
 	viewport.Y = 0;
 	viewport.Width = PROFILER_FRAME_IMAGE_SIZE;
@@ -206,12 +206,12 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 	vtx[2] = {left,  bottom, 0.0f, 1.0f, 0.0f, 1.0f};
 	vtx[3] = {left,  top,    0.0f, 1.0f, 0.0f, 0.0f};
 	DX8Wrapper::Set_DX8_Texture(0, intermediateTexture);
-	DX8Wrapper::Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_TEX1);
+	DX8Wrapper::Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_TEX1);
 	DX8Wrapper::Raw_Draw_Primitive_UP(GFX_PT_TRIANGLESTRIP, 2, vtx, sizeof(QuadVertex));
 	DX8Wrapper::Set_Pixel_Shader(0);
 	DX8Wrapper::Set_DX8_Texture(0, nullptr);
 	DX8Wrapper::Set_Viewport(&restoreViewport);
-	DX8Wrapper::Set_Render_Target(static_cast<IDirect3DSurface8 *>(nullptr));
+	DX8Wrapper::Set_Render_Target(static_cast<GfxSurface *>(nullptr));
 
 	// copy the small surface pixels from GPU to CPU
 	RECT srcRect = { 0, 0, PROFILER_FRAME_IMAGE_SIZE, smallRenderDesc.Height };

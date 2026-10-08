@@ -199,7 +199,7 @@ struct RenderStateStruct
 	ShaderClass shader;
 	VertexMaterialClass* material;
 	TextureBaseClass * Textures[MAX_TEXTURE_STAGES];
-	D3DLIGHT8 Lights[4];
+	GfxLight Lights[4];
 	bool LightEnable[4];
 	D3DMATRIX world;
 	D3DMATRIX view;
@@ -299,7 +299,7 @@ public:
 
 	static void Clear(bool clear_color, bool clear_z_stencil, const Vector3 &color, float dest_alpha=0.0f, float z=1.0f, unsigned int stencil=0);
 
-	static void	Set_Viewport(CONST D3DVIEWPORT8* pViewport);
+	static void	Set_Viewport(CONST GfxViewport* pViewport);
 
 	static void Set_Vertex_Buffer(const VertexBufferClass* vb, unsigned stream=0);
 	static void Set_Vertex_Buffer(const DynamicVBAccessClass& vba);
@@ -311,7 +311,7 @@ public:
 	static void Set_Render_State(const RenderStateStruct& state);
 	static void Release_Render_State();
 
-	static void Set_DX8_Material(const D3DMATERIAL8* mat);
+	static void Set_DX8_Material(const GfxMaterial* mat);
 
 	static void Set_Gamma(float gamma,float bright,float contrast,bool calibrate=true,bool uselimit=true);
 
@@ -332,11 +332,11 @@ public:
 	static void _Set_DX8_Transform(D3DTRANSFORMSTATETYPE transform, const D3DMATRIX& m);
 	static void _Get_DX8_Transform(D3DTRANSFORMSTATETYPE transform, D3DMATRIX& m);
 
-	static void Set_DX8_Light(int index,D3DLIGHT8* light);
+	static void Set_DX8_Light(int index,GfxLight* light);
 	static void Set_DX8_Render_State(D3DRENDERSTATETYPE state, unsigned value);
 	static void Set_DX8_Clip_Plane(DWORD Index, CONST float* pPlane);
 	static void Set_DX8_Texture_Stage_State(unsigned stage, D3DTEXTURESTAGESTATETYPE state, unsigned value);
-	static void Set_DX8_Texture(unsigned int stage, IDirect3DBaseTexture8* texture);
+	static void Set_DX8_Texture(unsigned int stage, GfxBaseTexture* texture);
 
 	// ---- Raw device access ----
 	// Uncached forwards to the device, with exactly the behaviour of calling it directly. Code that has to bypass the
@@ -345,7 +345,7 @@ public:
 	static HRESULT Raw_Set_Render_State(D3DRENDERSTATETYPE state, DWORD value);
 	static HRESULT Raw_Get_Render_State(D3DRENDERSTATETYPE state, DWORD* value);
 	static HRESULT Raw_Set_Texture_Stage_State(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value);
-	static HRESULT Raw_Set_Texture(DWORD stage, IDirect3DBaseTexture8* texture);
+	static HRESULT Raw_Set_Texture(DWORD stage, GfxBaseTexture* texture);
 	static HRESULT Raw_Create_Pixel_Shader(const DWORD* function, DWORD* handle);
 	static HRESULT Raw_Delete_Pixel_Shader(DWORD handle);
 	static HRESULT Raw_Set_Pixel_Shader(DWORD handle);
@@ -353,27 +353,27 @@ public:
 	static HRESULT Raw_Delete_Vertex_Shader(DWORD handle);
 	static HRESULT Raw_Set_Vertex_Shader(DWORD handle);
 	static HRESULT Raw_Set_Vertex_Shader_Constant(DWORD reg, const void* data, DWORD count);
-	static HRESULT Raw_Set_Stream_Source(UINT stream, IDirect3DVertexBuffer8* vb, UINT stride);
-	static HRESULT Raw_Set_Indices(IDirect3DIndexBuffer8* ib, UINT base_vertex);
+	static HRESULT Raw_Set_Stream_Source(UINT stream, GfxVertexBuffer* vb, UINT stride);
+	static HRESULT Raw_Set_Indices(GfxIndexBuffer* ib, UINT base_vertex);
 	static HRESULT Raw_Draw_Indexed_Primitive(D3DPRIMITIVETYPE type, UINT min_index, UINT num_vertices, UINT start_index, UINT primitive_count);
-	static HRESULT Raw_Get_Viewport(D3DVIEWPORT8* viewport);
-	static HRESULT Raw_Create_Vertex_Buffer(UINT length, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer8** vb);
-	static HRESULT Raw_Create_Index_Buffer(UINT length, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DIndexBuffer8** ib);
-	static HRESULT Raw_Create_Texture(UINT width, UINT height, UINT levels, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DTexture8** texture);
+	static HRESULT Raw_Get_Viewport(GfxViewport* viewport);
+	static HRESULT Raw_Create_Vertex_Buffer(UINT length, DWORD usage, DWORD fvf, D3DPOOL pool, GfxVertexBuffer** vb);
+	static HRESULT Raw_Create_Index_Buffer(UINT length, DWORD usage, D3DFORMAT format, D3DPOOL pool, GfxIndexBuffer** ib);
+	static HRESULT Raw_Create_Texture(UINT width, UINT height, UINT levels, DWORD usage, D3DFORMAT format, D3DPOOL pool, GfxTexture** texture);
 	static HRESULT Raw_Set_Transform(D3DTRANSFORMSTATETYPE type, const D3DMATRIX* matrix);
 	static HRESULT Raw_Draw_Primitive(D3DPRIMITIVETYPE type, UINT start_vertex, UINT primitive_count);
 	static HRESULT Raw_Draw_Primitive_UP(D3DPRIMITIVETYPE type, UINT primitive_count, const void* vertices, UINT stride);
 	static HRESULT Raw_Draw_Indexed_Primitive_UP(D3DPRIMITIVETYPE type, UINT min_index, UINT num_vertices, UINT primitive_count, const void* indices, D3DFORMAT index_format, const void* vertices, UINT stride);
-	static HRESULT Raw_Set_Render_Target(IDirect3DSurface8* target, IDirect3DSurface8* depth_stencil);
-	static HRESULT Raw_Get_Render_Target(IDirect3DSurface8** target);
-	static HRESULT Raw_Get_Depth_Stencil_Surface(IDirect3DSurface8** surface);
+	static HRESULT Raw_Set_Render_Target(GfxSurface* target, GfxSurface* depth_stencil);
+	static HRESULT Raw_Get_Render_Target(GfxSurface** target);
+	static HRESULT Raw_Get_Depth_Stencil_Surface(GfxSurface** surface);
 	static HRESULT Raw_Create_Vertex_Shader(const DWORD* declaration, const DWORD* function, DWORD* handle, DWORD usage);
-	static HRESULT Raw_Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** surface);
-	static HRESULT Raw_Copy_Rects(IDirect3DSurface8* source, const RECT* source_rects, UINT rect_count, IDirect3DSurface8* destination, const POINT* destination_points);
-	static HRESULT Raw_Process_Vertices(UINT source_start, UINT destination_index, UINT vertex_count, IDirect3DVertexBuffer8* destination, DWORD flags);
+	static HRESULT Raw_Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, GfxSurface** surface);
+	static HRESULT Raw_Copy_Rects(GfxSurface* source, const RECT* source_rects, UINT rect_count, GfxSurface* destination, const POINT* destination_points);
+	static HRESULT Raw_Process_Vertices(UINT source_start, UINT destination_index, UINT vertex_count, GfxVertexBuffer* destination, DWORD flags);
 	static HRESULT Raw_Test_Cooperative_Level();
 	static BOOL Raw_Show_Cursor(BOOL show);
-	static HRESULT Raw_Set_Cursor_Properties(UINT hot_x, UINT hot_y, IDirect3DSurface8* bitmap);
+	static HRESULT Raw_Set_Cursor_Properties(UINT hot_x, UINT hot_y, GfxSurface* bitmap);
 	static void Raw_Set_Cursor_Position(int x, int y, DWORD flags);
 	static void Set_Light_Environment(LightEnvironmentClass* light_env);
 	static LightEnvironmentClass* Get_Light_Environment() { return Light_Environment; }
@@ -385,7 +385,7 @@ public:
 	static void Get_Shader(ShaderClass& shader);
 	static void Set_Texture(unsigned stage,TextureBaseClass* texture);
 	static void Set_Material(const VertexMaterialClass* material);
-	static void Set_Light(unsigned index,const D3DLIGHT8* light);
+	static void Set_Light(unsigned index,const GfxLight* light);
 	static void Set_Light(unsigned index,const LightClass &light);
 
 	static void Apply_Render_State_Changes();	// Apply deferred render state changes (will be called automatically by Draw...)
@@ -418,7 +418,7 @@ public:
 		unsigned int depth,
 		WW3DFormat format,
 		MipCountType mip_level_count,
-		D3DPOOL pool=D3DPOOL_MANAGED
+		D3DPOOL pool=GFX_POOL_MANAGED
 	);
 
 	static IDirect3DCubeTexture8* _Create_DX8_Cube_Texture
@@ -427,43 +427,43 @@ public:
 		unsigned int height,
 		WW3DFormat format,
 		MipCountType mip_level_count,
-		D3DPOOL pool=D3DPOOL_MANAGED,
+		D3DPOOL pool=GFX_POOL_MANAGED,
 		bool rendertarget=false
 	);
 
 
-	static IDirect3DTexture8* _Create_DX8_ZTexture
+	static GfxTexture* _Create_DX8_ZTexture
 	(
 		unsigned int width,
 		unsigned int height,
 		WW3DZFormat zformat,
 		MipCountType mip_level_count,
-		D3DPOOL pool=D3DPOOL_MANAGED
+		D3DPOOL pool=GFX_POOL_MANAGED
 	);
 
 
-	static IDirect3DTexture8 * _Create_DX8_Texture
+	static GfxTexture * _Create_DX8_Texture
 	(
 		unsigned int width,
 		unsigned int height,
 		WW3DFormat format,
 		MipCountType mip_level_count,
-		D3DPOOL pool=D3DPOOL_MANAGED,
+		D3DPOOL pool=GFX_POOL_MANAGED,
 		bool rendertarget=false
 	);
-	static IDirect3DTexture8 * _Create_DX8_Texture(const char *filename, MipCountType mip_level_count);
-	static IDirect3DTexture8 * _Create_DX8_Texture(IDirect3DSurface8 *surface, MipCountType mip_level_count);
+	static GfxTexture * _Create_DX8_Texture(const char *filename, MipCountType mip_level_count);
+	static GfxTexture * _Create_DX8_Texture(GfxSurface *surface, MipCountType mip_level_count);
 
-	static IDirect3DSurface8 * _Create_DX8_Surface(unsigned int width, unsigned int height, WW3DFormat format);
-	static IDirect3DSurface8 * _Create_DX8_Surface(const char *filename);
-	static IDirect3DSurface8 * _Get_DX8_Front_Buffer();
+	static GfxSurface * _Create_DX8_Surface(unsigned int width, unsigned int height, WW3DFormat format);
+	static GfxSurface * _Create_DX8_Surface(const char *filename);
+	static GfxSurface * _Get_DX8_Front_Buffer();
 	static SurfaceClass * _Get_DX8_Back_Buffer(unsigned int num=0);
 
 	static void _Copy_DX8_Rects(
-			IDirect3DSurface8* pSourceSurface,
+			GfxSurface* pSourceSurface,
 			CONST RECT* pSourceRectsArray,
 			UINT cRects,
-			IDirect3DSurface8* pDestinationSurface,
+			GfxSurface* pDestinationSurface,
 			CONST POINT* pDestPointsArray
 	);
 
@@ -514,7 +514,7 @@ public:
 	**
 	**	swap_chain_ptr->Present (nullptr, nullptr, nullptr, nullptr);
 	**
-	**	DX8Wrapper::Set_Render_Target ((IDirect3DSurface8 *)nullptr);
+	**	DX8Wrapper::Set_Render_Target ((GfxSurface *)nullptr);
 	**
 	*/
 	static IDirect3DSwapChain8 *	Create_Additional_Swap_Chain (HWND render_window);
@@ -524,8 +524,8 @@ public:
 	*/
 	static TextureClass *	Create_Render_Target (int width, int height, WW3DFormat format = WW3D_FORMAT_UNKNOWN);
 
-	static void					Set_Render_Target (IDirect3DSurface8 *render_target, bool use_default_depth_buffer = false);
-	static void					Set_Render_Target (IDirect3DSurface8* render_target, IDirect3DSurface8* dpeth_buffer);
+	static void					Set_Render_Target (GfxSurface *render_target, bool use_default_depth_buffer = false);
+	static void					Set_Render_Target (GfxSurface* render_target, GfxSurface* dpeth_buffer);
 
 	static void					Set_Render_Target (IDirect3DSwapChain8 *swap_chain);
 	static bool					Is_Render_To_Texture() { return IsRenderToTexture; }
@@ -565,7 +565,7 @@ public:
 
 
 
-	static IDirect3DDevice8* _Get_D3D_Device8() { return D3DDevice; }
+	static GfxDevice* _Get_D3D_Device8() { return D3DDevice; }
 	static IDirect3D8* _Get_D3D8() { return D3DInterface; }
 	/// Returns the display format - added by TR for video playback - not part of W3D
 	static WW3DFormat	getBackBufferFormat();
@@ -707,7 +707,7 @@ protected:
 	static bool								world_identity;
 	static unsigned						RenderStates[256];
 	static unsigned						TextureStageStates[MAX_TEXTURE_STAGES][32];
-	static IDirect3DBaseTexture8 *	Textures[MAX_TEXTURE_STAGES];
+	static GfxBaseTexture *	Textures[MAX_TEXTURE_STAGES];
 
 	// These fog settings are constant for all objects in a given scene,
 	// unlike the matching renderstates which vary based on shader settings.
@@ -724,12 +724,12 @@ protected:
 	static D3DADAPTER_IDENTIFIER8		CurrentAdapterIdentifier;
 
 	static IDirect3D8 *					D3DInterface;			//d3d8;
-	static IDirect3DDevice8 *			D3DDevice;				//d3ddevice8;
+	static GfxDevice *			D3DDevice;				//d3ddevice8;
 
-	static IDirect3DSurface8 *			CurrentRenderTarget;
-	static IDirect3DSurface8 *			CurrentDepthBuffer;
-	static IDirect3DSurface8 *			DefaultRenderTarget;
-	static IDirect3DSurface8 *			DefaultDepthBuffer;
+	static GfxSurface *			CurrentRenderTarget;
+	static GfxSurface *			CurrentDepthBuffer;
+	static GfxSurface *			DefaultRenderTarget;
+	static GfxSurface *			DefaultDepthBuffer;
 
 	static unsigned							DrawPolygonLowBoundLimit;
 
@@ -864,7 +864,7 @@ WWINLINE void DX8Wrapper::Set_Ambient(const Vector3& color)
 //
 // ----------------------------------------------------------------------------
 
-WWINLINE void DX8Wrapper::Set_DX8_Material(const D3DMATERIAL8* mat)
+WWINLINE void DX8Wrapper::Set_DX8_Material(const GfxMaterial* mat)
 {
 	DX8_RECORD_MATERIAL_CHANGE();
 	WWASSERT(mat);
@@ -872,7 +872,7 @@ WWINLINE void DX8Wrapper::Set_DX8_Material(const D3DMATERIAL8* mat)
 	DX8CALL(SetMaterial(mat));
 }
 
-WWINLINE void DX8Wrapper::Set_DX8_Light(int index, D3DLIGHT8* light)
+WWINLINE void DX8Wrapper::Set_DX8_Light(int index, GfxLight* light)
 {
 	if (light) {
 		DX8_RECORD_LIGHT_CHANGE();
@@ -929,7 +929,7 @@ WWINLINE HRESULT DX8Wrapper::Raw_Set_Texture_Stage_State(DWORD stage, D3DTEXTURE
 	return D3DDevice->SetTextureStageState(stage, type, value);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Set_Texture(DWORD stage, IDirect3DBaseTexture8* texture)
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Texture(DWORD stage, GfxBaseTexture* texture)
 {
 	return D3DDevice->SetTexture(stage, texture);
 }
@@ -969,12 +969,12 @@ WWINLINE HRESULT DX8Wrapper::Raw_Set_Vertex_Shader_Constant(DWORD reg, const voi
 	return D3DDevice->SetVertexShaderConstant(reg, data, count);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Set_Stream_Source(UINT stream, IDirect3DVertexBuffer8* vb, UINT stride)
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Stream_Source(UINT stream, GfxVertexBuffer* vb, UINT stride)
 {
 	return D3DDevice->SetStreamSource(stream, vb, stride);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Set_Indices(IDirect3DIndexBuffer8* ib, UINT base_vertex)
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Indices(GfxIndexBuffer* ib, UINT base_vertex)
 {
 	return D3DDevice->SetIndices(ib, base_vertex);
 }
@@ -984,22 +984,22 @@ WWINLINE HRESULT DX8Wrapper::Raw_Draw_Indexed_Primitive(D3DPRIMITIVETYPE type, U
 	return D3DDevice->DrawIndexedPrimitive(type, min_index, num_vertices, start_index, primitive_count);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Get_Viewport(D3DVIEWPORT8* viewport)
+WWINLINE HRESULT DX8Wrapper::Raw_Get_Viewport(GfxViewport* viewport)
 {
 	return D3DDevice->GetViewport(viewport);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Create_Vertex_Buffer(UINT length, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer8** vb)
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Vertex_Buffer(UINT length, DWORD usage, DWORD fvf, D3DPOOL pool, GfxVertexBuffer** vb)
 {
 	return D3DDevice->CreateVertexBuffer(length, usage, fvf, pool, vb);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Create_Index_Buffer(UINT length, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DIndexBuffer8** ib)
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Index_Buffer(UINT length, DWORD usage, D3DFORMAT format, D3DPOOL pool, GfxIndexBuffer** ib)
 {
 	return D3DDevice->CreateIndexBuffer(length, usage, format, pool, ib);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Create_Texture(UINT width, UINT height, UINT levels, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DTexture8** texture)
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Texture(UINT width, UINT height, UINT levels, DWORD usage, D3DFORMAT format, D3DPOOL pool, GfxTexture** texture)
 {
 	return D3DDevice->CreateTexture(width, height, levels, usage, format, pool, texture);
 }
@@ -1024,17 +1024,17 @@ WWINLINE HRESULT DX8Wrapper::Raw_Draw_Indexed_Primitive_UP(D3DPRIMITIVETYPE type
 	return D3DDevice->DrawIndexedPrimitiveUP(type, min_index, num_vertices, primitive_count, indices, index_format, vertices, stride);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Set_Render_Target(IDirect3DSurface8* target, IDirect3DSurface8* depth_stencil)
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Render_Target(GfxSurface* target, GfxSurface* depth_stencil)
 {
 	return D3DDevice->SetRenderTarget(target, depth_stencil);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Get_Render_Target(IDirect3DSurface8** target)
+WWINLINE HRESULT DX8Wrapper::Raw_Get_Render_Target(GfxSurface** target)
 {
 	return D3DDevice->GetRenderTarget(target);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Get_Depth_Stencil_Surface(IDirect3DSurface8** surface)
+WWINLINE HRESULT DX8Wrapper::Raw_Get_Depth_Stencil_Surface(GfxSurface** surface)
 {
 	return D3DDevice->GetDepthStencilSurface(surface);
 }
@@ -1044,17 +1044,17 @@ WWINLINE HRESULT DX8Wrapper::Raw_Create_Vertex_Shader(const DWORD* declaration, 
 	return D3DDevice->CreateVertexShader(declaration, function, handle, usage);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** surface)
+WWINLINE HRESULT DX8Wrapper::Raw_Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, GfxSurface** surface)
 {
 	return D3DDevice->CreateImageSurface(width, height, format, surface);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Copy_Rects(IDirect3DSurface8* source, const RECT* source_rects, UINT rect_count, IDirect3DSurface8* destination, const POINT* destination_points)
+WWINLINE HRESULT DX8Wrapper::Raw_Copy_Rects(GfxSurface* source, const RECT* source_rects, UINT rect_count, GfxSurface* destination, const POINT* destination_points)
 {
 	return D3DDevice->CopyRects(source, source_rects, rect_count, destination, destination_points);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Process_Vertices(UINT source_start, UINT destination_index, UINT vertex_count, IDirect3DVertexBuffer8* destination, DWORD flags)
+WWINLINE HRESULT DX8Wrapper::Raw_Process_Vertices(UINT source_start, UINT destination_index, UINT vertex_count, GfxVertexBuffer* destination, DWORD flags)
 {
 	return D3DDevice->ProcessVertices(source_start, destination_index, vertex_count, destination, flags);
 }
@@ -1069,7 +1069,7 @@ WWINLINE BOOL DX8Wrapper::Raw_Show_Cursor(BOOL show)
 	return D3DDevice->ShowCursor(show);
 }
 
-WWINLINE HRESULT DX8Wrapper::Raw_Set_Cursor_Properties(UINT hot_x, UINT hot_y, IDirect3DSurface8* bitmap)
+WWINLINE HRESULT DX8Wrapper::Raw_Set_Cursor_Properties(UINT hot_x, UINT hot_y, GfxSurface* bitmap)
 {
 	return D3DDevice->SetCursorProperties(hot_x, hot_y, bitmap);
 }
@@ -1107,7 +1107,7 @@ WWINLINE void DX8Wrapper::Set_DX8_Texture_Stage_State(unsigned stage, D3DTEXTURE
 	DX8_RECORD_TEXTURE_STAGE_STATE_CHANGE();
 }
 
-WWINLINE void DX8Wrapper::Set_DX8_Texture(unsigned int stage, IDirect3DBaseTexture8* texture)
+WWINLINE void DX8Wrapper::Set_DX8_Texture(unsigned int stage, GfxBaseTexture* texture)
 {
   	if (stage >= MAX_TEXTURE_STAGES)
   	{	DX8CALL(SetTexture(stage, texture));
@@ -1126,10 +1126,10 @@ WWINLINE void DX8Wrapper::Set_DX8_Texture(unsigned int stage, IDirect3DBaseTextu
 }
 
 WWINLINE void DX8Wrapper::_Copy_DX8_Rects(
-  IDirect3DSurface8* pSourceSurface,
+  GfxSurface* pSourceSurface,
   CONST RECT* pSourceRectsArray,
   UINT cRects,
-  IDirect3DSurface8* pDestinationSurface,
+  GfxSurface* pDestinationSurface,
   CONST POINT* pDestPointsArray
 )
 {

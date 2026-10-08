@@ -2054,8 +2054,8 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 					DX8Wrapper::Raw_Set_Stream_Source(
 						0,
 						m_xformedVertexBuffer[j*m_numVBTilesX+i],
-						D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
-					DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
+						D3DXGetFVFVertexSize(GFX_FVF_XYZRHW |GFX_FVF_DIFFUSE|GFX_FVF_TEX2));
+					DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW |GFX_FVF_DIFFUSE|GFX_FVF_TEX2);
 				}
 #endif
 				if (Is_Hidden() == 0) {
@@ -2172,8 +2172,8 @@ void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 				DX8Wrapper::Raw_Set_Stream_Source(
 					0,
 					m_xformedVertexBuffer[j*m_numVBTilesX+i],
-					D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
-				DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
+					D3DXGetFVFVertexSize(GFX_FVF_XYZRHW |GFX_FVF_DIFFUSE|GFX_FVF_TEX2));
+				DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW |GFX_FVF_DIFFUSE|GFX_FVF_TEX2);
 			}
 #endif
 			if (Is_Hidden() == 0) {

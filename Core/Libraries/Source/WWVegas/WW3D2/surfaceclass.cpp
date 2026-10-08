@@ -178,7 +178,7 @@ SurfaceClass::SurfaceClass(const char *filename):
 	SurfaceFormat=desc.Format;
 }
 
-SurfaceClass::SurfaceClass(IDirect3DSurface8 *d3d_surface)	:
+SurfaceClass::SurfaceClass(GfxSurface *d3d_surface)	:
 	D3DSurface (nullptr)
 {
 	Attach (d3d_surface);
@@ -396,7 +396,7 @@ unsigned char *SurfaceClass::CreateCopy(int *width,int *height,int*size,bool fli
 
 	D3DLOCKED_RECT lock_rect;
 	::ZeroMemory(&lock_rect, sizeof(D3DLOCKED_RECT));
-	DX8_ErrorCode(D3DSurface->LockRect(&lock_rect,nullptr,D3DLOCK_READONLY));
+	DX8_ErrorCode(D3DSurface->LockRect(&lock_rect,nullptr,GFX_LOCK_READONLY));
 	unsigned int i;
 	unsigned char *mem=(unsigned char *) lock_rect.pBits;
 
@@ -563,7 +563,7 @@ void SurfaceClass::FindBB(Vector2i *min,Vector2i*max)
 	rect.left=min->I;
 	rect.right=max->I;
 
-	DX8_ErrorCode(D3DSurface->LockRect(&lock_rect,&rect,D3DLOCK_READONLY));
+	DX8_ErrorCode(D3DSurface->LockRect(&lock_rect,&rect,GFX_LOCK_READONLY));
 
 	int x,y;
 	unsigned int size=::Get_Bytes_Per_Pixel(sd.Format);
@@ -641,7 +641,7 @@ bool SurfaceClass::Is_Transparent_Column(unsigned int column)
 	rect.left=column;
 	rect.right=column+1;
 
-	DX8_ErrorCode(D3DSurface->LockRect(&lock_rect,&rect,D3DLOCK_READONLY));
+	DX8_ErrorCode(D3DSurface->LockRect(&lock_rect,&rect,GFX_LOCK_READONLY));
 
 	int y;
 
@@ -703,7 +703,7 @@ void SurfaceClass::Get_Pixel(Vector3 &rgb, int x, int y, LockedSurfacePtr pBits,
  * HISTORY:                                                                                    *
  *   3/27/2001  pds : Created.                                                                 *
  *=============================================================================================*/
-void SurfaceClass::Attach (IDirect3DSurface8 *surface)
+void SurfaceClass::Attach (GfxSurface *surface)
 {
 	Detach ();
 	D3DSurface = surface;

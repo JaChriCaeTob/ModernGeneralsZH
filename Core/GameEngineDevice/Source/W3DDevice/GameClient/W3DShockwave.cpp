@@ -37,7 +37,7 @@ struct ScreenVertex
 	float u, v;
 };
 
-const DWORD kFvf = D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1;
+const DWORD kFvf = GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE | GFX_FVF_TEX1;
 const float kPi = 3.14159265f;
 
 inline float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -263,7 +263,7 @@ void W3DShockwave::render()
 			}
 
 		DX8Wrapper::Raw_Draw_Indexed_Primitive_UP(GFX_PT_TRIANGLELIST, 0, (UINT)verts.size(), (UINT)(indices.size() / 3),
-			&indices[0], D3DFMT_INDEX16, &verts[0], sizeof(ScreenVertex));
+			&indices[0], GFX_FMT_INDEX16, &verts[0], sizeof(ScreenVertex));
 	}
 
 	DX8Wrapper::Raw_Set_Texture(0, nullptr);

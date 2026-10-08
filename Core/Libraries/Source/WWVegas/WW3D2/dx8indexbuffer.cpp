@@ -289,19 +289,19 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 	DX8_THREAD_ASSERT();
 	WWASSERT(index_count);
 	unsigned usage_flags=
-		D3DUSAGE_WRITEONLY|
-		((usage&USAGE_DYNAMIC) ? D3DUSAGE_DYNAMIC : 0)|
-		((usage&USAGE_NPATCHES) ? D3DUSAGE_NPATCHES : 0)|
-		((usage&USAGE_SOFTWAREPROCESSING) ? D3DUSAGE_SOFTWAREPROCESSING : 0);
+		GFX_USAGE_WRITEONLY|
+		((usage&USAGE_DYNAMIC) ? GFX_USAGE_DYNAMIC : 0)|
+		((usage&USAGE_NPATCHES) ? GFX_USAGE_NPATCHES : 0)|
+		((usage&USAGE_SOFTWAREPROCESSING) ? GFX_USAGE_SOFTWAREPROCESSING : 0);
 	if (!DX8Wrapper::Get_Current_Caps()->Support_TnL()) {
-		usage_flags|=D3DUSAGE_SOFTWAREPROCESSING;
+		usage_flags|=GFX_USAGE_SOFTWAREPROCESSING;
 	}
 
 	HRESULT ret=DX8Wrapper::_Get_D3D_Device8()->CreateIndexBuffer(
 		sizeof(WORD)*index_count,
 		usage_flags,
-		D3DFMT_INDEX16,
-		(usage&USAGE_DYNAMIC) ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED,
+		GFX_FMT_INDEX16,
+		(usage&USAGE_DYNAMIC) ? GFX_POOL_DEFAULT : GFX_POOL_MANAGED,
 		&index_buffer);
 
 	if (SUCCEEDED(ret)) {
@@ -322,8 +322,8 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 	ret=DX8Wrapper::_Get_D3D_Device8()->CreateIndexBuffer(
 		sizeof(WORD)*index_count,
 		usage_flags,
-		D3DFMT_INDEX16,
-		(usage&USAGE_DYNAMIC) ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED,
+		GFX_FMT_INDEX16,
+		(usage&USAGE_DYNAMIC) ? GFX_POOL_DEFAULT : GFX_POOL_MANAGED,
 		&index_buffer);
 
 	if (SUCCEEDED(ret)) {
@@ -435,7 +435,7 @@ DynamicIBAccessClass::WriteLockClass::WriteLockClass(DynamicIBAccessClass* ib_ac
 			DynamicIBAccess->IndexBufferOffset*sizeof(WORD),
 			DynamicIBAccess->Get_Index_Count()*sizeof(WORD),
 			(unsigned char**)&Indices,
-			!DynamicIBAccess->IndexBufferOffset ? D3DLOCK_DISCARD : D3DLOCK_NOOVERWRITE));
+			!DynamicIBAccess->IndexBufferOffset ? GFX_LOCK_DISCARD : GFX_LOCK_NOOVERWRITE));
 		break;
 	case BUFFER_TYPE_DYNAMIC_SORTING:
 		Indices=static_cast<SortingIndexBufferClass*>(DynamicIBAccess->IndexBuffer)->index_buffer;

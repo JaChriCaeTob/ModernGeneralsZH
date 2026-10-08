@@ -41,14 +41,14 @@
 #include "WWLib/always.h"
 #include "ww3dformat.h"
 
-struct IDirect3DSurface8;
+#include "gfx_d3d8_map.h"
 class Vector2i;
 class Vector3;
 
 /*************************************************************************
 **                             SurfaceClass
 **
-** This is our surface class, which wraps IDirect3DSurface8.
+** This is our surface class, which wraps GfxSurface.
 **
 ** Hector Yee 2/12/01 - added in fills, blits etc for font3d class
 **
@@ -72,7 +72,7 @@ class SurfaceClass : public RefCountClass
 		SurfaceClass(const char *filename);
 
 		// Create the surface from a D3D pointer
-		SurfaceClass(IDirect3DSurface8 *d3d_surface);
+		SurfaceClass(GfxSurface *d3d_surface);
 
 		virtual ~SurfaceClass() override;
 
@@ -120,10 +120,10 @@ class SurfaceClass : public RefCountClass
 		unsigned char *CreateCopy(int *width,int *height,int*size,bool flip=false);
 
 			// For use by TextureClass:
-		IDirect3DSurface8 *Peek_D3D_Surface() { return D3DSurface; }
+		GfxSurface *Peek_D3D_Surface() { return D3DSurface; }
 
 		// Attaching and detaching a surface pointer
-		void	Attach (IDirect3DSurface8 *surface);
+		void	Attach (GfxSurface *surface);
 		void	Detach ();
 
 		// draws a horizontal line
@@ -146,7 +146,7 @@ class SurfaceClass : public RefCountClass
 	private:
 
 		// Direct3D surface object
-		IDirect3DSurface8 *D3DSurface;
+		GfxSurface *D3DSurface;
 
 		WW3DFormat SurfaceFormat;
 	friend class TextureClass;

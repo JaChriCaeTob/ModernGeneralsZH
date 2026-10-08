@@ -110,7 +110,7 @@ public:
 				Height,
 				Format,
 				Mip_level_count,
-				D3DPOOL_DEFAULT,
+				GFX_POOL_DEFAULT,
 				RenderTarget
 			)
 		);
@@ -147,7 +147,7 @@ public:
 				Height,
 				ZFormat,
 				Mip_level_count,
-				D3DPOOL_DEFAULT
+				GFX_POOL_DEFAULT
 			)
 		);
 	}

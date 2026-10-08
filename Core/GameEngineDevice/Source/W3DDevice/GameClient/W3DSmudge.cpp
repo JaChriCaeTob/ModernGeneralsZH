@@ -132,12 +132,12 @@ void W3DSmudgeManager::ReAcquireResources()
 /*Copies a portion of the current render target into a specified buffer*/
 Int copyRect(unsigned char *buf, Int bufSize, int oX, int oY, int width, int height)
 {
- 	IDirect3DSurface8 *surface=nullptr;	///<previous render target
- 	IDirect3DSurface8 *tempSurface=nullptr;
+ 	GfxSurface *surface=nullptr;	///<previous render target
+ 	GfxSurface *tempSurface=nullptr;
 	Int result = 0;
 	HRESULT hr = S_OK;
 
- 	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
+ 	GfxDevice* m_pDev=DX8Wrapper::_Get_D3D_Device8();
 
 	if (!m_pDev)
 		goto error;
@@ -173,7 +173,7 @@ Int copyRect(unsigned char *buf, Int bufSize, int oX, int oY, int width, int hei
 
  	D3DLOCKED_RECT lrect;
 
- 	hr=tempSurface->LockRect(&lrect,nullptr,D3DLOCK_READONLY);
+ 	hr=tempSurface->LockRect(&lrect,nullptr,GFX_LOCK_READONLY);
 
 	if (hr != S_OK)
 		goto error;
@@ -206,7 +206,7 @@ Bool W3DSmudgeManager::testHardwareSupport()
 	{
 		//we have not done the test yet.
 
-		IDirect3DTexture8 *backTexture=W3DShaderManager::getRenderTexture();
+		GfxTexture *backTexture=W3DShaderManager::getRenderTexture();
 		if (!backTexture || !W3DShaderManager::isRenderingToTexture())
 		{
 			// TheSuperHackers @bugfix When Render-To-Texture is disabled globally, we fallback
@@ -264,7 +264,7 @@ Bool W3DSmudgeManager::testHardwareSupport()
 
 		//draw polygons like this is very inefficient but for only 2 triangles, it's
 		//not worth bothering with index/vertex buffers.
-		DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+		DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE | GFX_FVF_TEX1);
 
 		DX8Wrapper::Raw_Draw_Primitive_UP(GFX_PT_TRIANGLESTRIP, 2, v, sizeof(_TRANS_LIT_TEX_VERTEX));
 

@@ -109,10 +109,10 @@ GraphicsVenderID W3DShaderManager::m_currentVendor;
 __int64 W3DShaderManager::m_driverVersion;
 
 Bool W3DShaderManager::m_renderingToTexture = false;
-IDirect3DSurface8 *W3DShaderManager::m_oldRenderSurface=nullptr;	///<previous render target
-IDirect3DTexture8 *W3DShaderManager::m_renderTexture=nullptr;		///<texture into which rendering will be redirected.
-IDirect3DSurface8 *W3DShaderManager::m_newRenderSurface=nullptr;	///<new render target inside m_renderTexture
-IDirect3DSurface8 *W3DShaderManager::m_oldDepthSurface=nullptr;	///<previous depth buffer surface
+GfxSurface *W3DShaderManager::m_oldRenderSurface=nullptr;	///<previous render target
+GfxTexture *W3DShaderManager::m_renderTexture=nullptr;		///<texture into which rendering will be redirected.
+GfxSurface *W3DShaderManager::m_newRenderSurface=nullptr;	///<new render target inside m_renderTexture
+GfxSurface *W3DShaderManager::m_oldDepthSurface=nullptr;	///<previous depth buffer surface
 /*===========================================================================================*/
 /*=========      Screen Shaders	=============================================================*/
 /*===========================================================================================*/
@@ -182,7 +182,7 @@ Bool ScreenDefaultFilter::preRender(Bool &skipRender, CustomScenePassModes &scen
 
 Bool ScreenDefaultFilter::postRender(FilterModes mode, Coord2D &scrollDelta,Bool &doExtraRender)
 {
-	IDirect3DTexture8 * tex =	W3DShaderManager::endRenderToTexture();
+	GfxTexture * tex =	W3DShaderManager::endRenderToTexture();
 	DEBUG_ASSERTCRASH(tex, ("Require rendered texture."));
 	if (!tex) return false;
 	if (!set(mode)) return false;
@@ -221,7 +221,7 @@ Bool ScreenDefaultFilter::postRender(FilterModes mode, Coord2D &scrollDelta,Bool
 
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
-	DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+	DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE | GFX_FVF_TEX1);
 
 	DX8Wrapper::Raw_Draw_Primitive_UP(GFX_PT_TRIANGLESTRIP, 2, v, sizeof(_TRANS_LIT_TEX_VERTEX));
 
@@ -320,7 +320,7 @@ Bool ScreenBWFilter::preRender(Bool &skipRender, CustomScenePassModes &scenePass
 
 Bool ScreenBWFilter::postRender(FilterModes mode, Coord2D &scrollDelta,Bool &doExtraRender)
 {
-	IDirect3DTexture8 * tex =	W3DShaderManager::endRenderToTexture();
+	GfxTexture * tex =	W3DShaderManager::endRenderToTexture();
 	DEBUG_ASSERTCRASH(tex, ("Require rendered texture."));
 	if (!tex) return false;
 	if (!set(mode)) return false;
@@ -359,7 +359,7 @@ Bool ScreenBWFilter::postRender(FilterModes mode, Coord2D &scrollDelta,Bool &doE
 
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
-	DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+	DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE | GFX_FVF_TEX1);
 
 	DX8Wrapper::Raw_Draw_Primitive_UP(GFX_PT_TRIANGLESTRIP, 2, v, sizeof(_TRANS_LIT_TEX_VERTEX));
 
@@ -513,7 +513,7 @@ Bool ScreenBWFilterDOT3::preRender(Bool &skipRender, CustomScenePassModes &scene
 
 Bool ScreenBWFilterDOT3::postRender(FilterModes mode, Coord2D &scrollDelta,Bool &doExtraRender)
 {
-	IDirect3DTexture8 * tex =	W3DShaderManager::endRenderToTexture();
+	GfxTexture * tex =	W3DShaderManager::endRenderToTexture();
 	DEBUG_ASSERTCRASH(tex, ("Require rendered texture."));
 	if (!tex) return false;
 	if (!set(mode)) return false;
@@ -554,7 +554,7 @@ Bool ScreenBWFilterDOT3::postRender(FilterModes mode, Coord2D &scrollDelta,Bool 
 
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
-	DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+	DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE | GFX_FVF_TEX1);
 
 	//Draw B&W version first
 	if (DX8Wrapper::Get_Current_Caps()->Support_Dot3())
@@ -769,7 +769,7 @@ Bool ScreenCrossFadeFilter::preRender(Bool &skipRender, CustomScenePassModes &sc
 
 Bool ScreenCrossFadeFilter::postRender(FilterModes mode, Coord2D &scrollDelta,Bool &doExtraRender)
 {
-	IDirect3DTexture8 * tex;
+	GfxTexture * tex;
 
 	if (m_skipRender)
 	{
@@ -846,7 +846,7 @@ Bool ScreenCrossFadeFilter::postRender(FilterModes mode, Coord2D &scrollDelta,Bo
 
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
-	DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX2);
+	DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE | GFX_FVF_TEX2);
 
 //		DX8Wrapper::Raw_Set_Texture_Stage_State(0,GFX_TSS_MAGFILTER,GFX_TEXF_POINT);
 //		DX8Wrapper::Raw_Set_Texture_Stage_State(0,GFX_TSS_MINFILTER,GFX_TEXF_POINT);
@@ -952,7 +952,7 @@ Bool ScreenMotionBlurFilter::preRender(Bool &skipRender, CustomScenePassModes &s
 
 Bool ScreenMotionBlurFilter::postRender(FilterModes mode, Coord2D &scrollDelta,Bool &doExtraRender)
 {
-	IDirect3DTexture8 * tex =	W3DShaderManager::endRenderToTexture();
+	GfxTexture * tex =	W3DShaderManager::endRenderToTexture();
 	DEBUG_ASSERTCRASH(tex, ("Require rendered texture."));
 	if (!tex) return false;
 	if (!set(mode)) return false;
@@ -1002,7 +1002,7 @@ Bool ScreenMotionBlurFilter::postRender(FilterModes mode, Coord2D &scrollDelta,B
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
 	DX8Wrapper::Apply_Render_State_Changes();
-	DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+	DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE | GFX_FVF_TEX1);
 
 	Coord2D center;
 	center.x = 0.5f;
@@ -2642,7 +2642,7 @@ void W3DShaderManager::init()
 		// while using a multisampled depth buffer is an API violation in DX8.
 		if (desc.MultiSampleType == D3DMULTISAMPLE_NONE)
 		{
-			hr=DX8Wrapper::Raw_Create_Texture(desc.Width,desc.Height,1,D3DUSAGE_RENDERTARGET,desc.Format,D3DPOOL_DEFAULT,&m_renderTexture);
+			hr=DX8Wrapper::Raw_Create_Texture(desc.Width,desc.Height,1,GFX_USAGE_RENDERTARGET,desc.Format,GFX_POOL_DEFAULT,&m_renderTexture);
 		}
 		else
 		{
@@ -2849,7 +2849,7 @@ void W3DShaderManager::drawViewport(Int color)
 
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
-	DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+	DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE | GFX_FVF_TEX1);
 
 	DX8Wrapper::Raw_Draw_Primitive_UP(GFX_PT_TRIANGLESTRIP, 2, v, sizeof(_TRANS_LIT_TEX_VERTEX));
 }
@@ -2908,7 +2908,7 @@ void W3DShaderManager::startRenderToTexture()
 /** Ends rendering to a texture.
  */
 //=============================================================================
-IDirect3DTexture8 *W3DShaderManager::endRenderToTexture()
+GfxTexture *W3DShaderManager::endRenderToTexture()
 {
 	DEBUG_ASSERTCRASH(m_renderingToTexture, ("Not rendering to texture."));
 	if (!m_renderingToTexture) return nullptr;
@@ -2933,7 +2933,7 @@ IDirect3DTexture8 *W3DShaderManager::endRenderToTexture()
 /**Returns texture containing the image that was last rendered using any of the effects requiring render target
 textures.  Used mostly for cross-fading effects that need an unmodified version of the view before the effect
 was applied.  NOTE: This texture does not survive device reset.. so quit effect on reset!*/
-IDirect3DTexture8 *W3DShaderManager::getRenderTexture()
+GfxTexture *W3DShaderManager::getRenderTexture()
 {
 	return m_renderTexture;
 }

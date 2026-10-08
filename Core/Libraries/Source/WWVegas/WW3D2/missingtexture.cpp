@@ -29,24 +29,24 @@ static unsigned missing_image_depth=24;
 extern unsigned int missing_image_palette[];
 extern unsigned int missing_image_pixels[];
 
-static IDirect3DTexture8 * _MissingTexture = nullptr;
+static GfxTexture * _MissingTexture = nullptr;
 
-IDirect3DTexture8* MissingTexture::_Get_Missing_Texture()
+GfxTexture* MissingTexture::_Get_Missing_Texture()
 {
 	WWASSERT(_MissingTexture);
 	_MissingTexture->AddRef();
 	return _MissingTexture;
 }
 
-IDirect3DSurface8* MissingTexture::_Create_Missing_Surface()
+GfxSurface* MissingTexture::_Create_Missing_Surface()
 {
-	IDirect3DSurface8 *texture_surface = nullptr;
+	GfxSurface *texture_surface = nullptr;
 	DX8_ErrorCode(_MissingTexture->GetSurfaceLevel(0, &texture_surface));
 	D3DSURFACE_DESC texture_surface_desc;
 	::ZeroMemory(&texture_surface_desc, sizeof(D3DSURFACE_DESC));
 	DX8_ErrorCode(texture_surface->GetDesc(&texture_surface_desc));
 
-	IDirect3DSurface8 *surface = nullptr;
+	GfxSurface *surface = nullptr;
 	DX8CALL(CreateImageSurface(
 		texture_surface_desc.Width,
 		texture_surface_desc.Height,
@@ -61,7 +61,7 @@ void MissingTexture::_Init()
 {
 	WWASSERT(!_MissingTexture);
 
-	IDirect3DTexture8* tex=DX8Wrapper::_Create_DX8_Texture
+	GfxTexture* tex=DX8Wrapper::_Create_DX8_Texture
 	(
 		missing_image_width,
 		missing_image_height,
@@ -98,7 +98,7 @@ void MissingTexture::_Init()
 	DX8_ErrorCode(tex->UnlockRect(0));
 
 	for (unsigned i=1;i<tex->GetLevelCount();++i) {
-		IDirect3DSurface8 *src,*dst;
+		GfxSurface *src,*dst;
 		DX8_ErrorCode(tex->GetSurfaceLevel(i-1,&src));
 		DX8_ErrorCode(tex->GetSurfaceLevel(i,&dst));
 

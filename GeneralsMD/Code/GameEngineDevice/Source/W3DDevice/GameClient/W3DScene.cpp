@@ -1268,14 +1268,14 @@ void renderStenciledPlayerColor( UnsignedInt color, UnsignedInt stencilRef, Bool
 	REF_PTR_RELEASE(vmat);
 	DX8Wrapper::Apply_Render_State_Changes();	//force update all render states
 
-	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
+	GfxDevice* m_pDev=DX8Wrapper::_Get_D3D_Device8();
 
 	if (!m_pDev)
 		return;	//need device to render anything.
 
 	//draw polygons like this is very inefficient but for only 2 triangles, it's
 	//not worth bothering with index/vertex buffers.
-	DX8Wrapper::Raw_Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+	DX8Wrapper::Raw_Set_Vertex_Shader(GFX_FVF_XYZRHW | GFX_FVF_DIFFUSE);
 
 	// Set stencil states
 	DX8Wrapper::Set_DX8_Render_State(GFX_RS_STENCILENABLE, TRUE );

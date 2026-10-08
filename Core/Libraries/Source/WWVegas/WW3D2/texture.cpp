@@ -251,7 +251,7 @@ void TextureBaseClass::Invalidate()
 //! Returns a pointer to the d3d texture
 /*!
 */
-IDirect3DBaseTexture8 * TextureBaseClass::Peek_D3D_Base_Texture() const
+GfxBaseTexture * TextureBaseClass::Peek_D3D_Base_Texture() const
 {
 	LastAccessed=WW3D::Get_Sync_Time();
 	return D3DTexture;
@@ -261,7 +261,7 @@ IDirect3DBaseTexture8 * TextureBaseClass::Peek_D3D_Base_Texture() const
 //! Set the d3d texture pointer.  Handles ref counts properly.
 /*!
 */
-void TextureBaseClass::Set_D3D_Base_Texture(IDirect3DBaseTexture8* tex)
+void TextureBaseClass::Set_D3D_Base_Texture(GfxBaseTexture* tex)
 {
 	// (gth) Generals does stuff directly with the D3DTexture pointer so lets
 	// reset the access timer whenever someon messes with this pointer.
@@ -298,7 +298,7 @@ void TextureBaseClass::Load_Locked_Surface()
 bool TextureBaseClass::Is_Missing_Texture()
 {
 	bool flag = false;
-	IDirect3DBaseTexture8 *missing_texture = MissingTexture::_Get_Missing_Texture();
+	GfxBaseTexture *missing_texture = MissingTexture::_Get_Missing_Texture();
 
 	if (D3DTexture == missing_texture)
 		flag = true;
@@ -614,9 +614,9 @@ TextureClass::TextureClass
 	D3DPOOL d3dpool=(D3DPOOL)0;
 	switch(pool)
 	{
-	case POOL_DEFAULT		: d3dpool=D3DPOOL_DEFAULT; break;
-	case POOL_MANAGED		: d3dpool=D3DPOOL_MANAGED; break;
-	case POOL_SYSTEMMEM	: d3dpool=D3DPOOL_SYSTEMMEM; break;
+	case POOL_DEFAULT		: d3dpool=GFX_POOL_DEFAULT; break;
+	case POOL_MANAGED		: d3dpool=GFX_POOL_MANAGED; break;
+	case POOL_SYSTEMMEM	: d3dpool=GFX_POOL_SYSTEMMEM; break;
 	default: WWASSERT(0);
 	}
 
@@ -792,7 +792,7 @@ TextureClass::TextureClass
 }
 
 // ----------------------------------------------------------------------------
-TextureClass::TextureClass(IDirect3DBaseTexture8* d3d_texture)
+TextureClass::TextureClass(GfxBaseTexture* d3d_texture)
 :	TextureBaseClass
 	(
 		0,
@@ -806,7 +806,7 @@ TextureClass::TextureClass(IDirect3DBaseTexture8* d3d_texture)
 	IsReducible=false;
 
 	Set_D3D_Base_Texture(d3d_texture);
-	IDirect3DSurface8* surface;
+	GfxSurface* surface;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0,&surface));
 	D3DSURFACE_DESC d3d_desc;
 	::ZeroMemory(&d3d_desc, sizeof(D3DSURFACE_DESC));
@@ -881,12 +881,12 @@ void TextureClass::Init()
 */
 void TextureClass::Apply_New_Surface
 (
-	IDirect3DBaseTexture8* d3d_texture,
+	GfxBaseTexture* d3d_texture,
 	bool initialized,
 	bool disable_auto_invalidation
 )
 {
-	IDirect3DBaseTexture8* d3d_tex=Peek_D3D_Base_Texture();
+	GfxBaseTexture* d3d_tex=Peek_D3D_Base_Texture();
 
 	if (d3d_tex) d3d_tex->Release();
 
@@ -897,7 +897,7 @@ void TextureClass::Apply_New_Surface
 	if (disable_auto_invalidation) InactivationTime = 0;
 
 	WWASSERT(d3d_texture);
-	IDirect3DSurface8* surface;
+	GfxSurface* surface;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0,&surface));
 	D3DSURFACE_DESC d3d_desc;
 	::ZeroMemory(&d3d_desc, sizeof(D3DSURFACE_DESC));
@@ -979,7 +979,7 @@ SurfaceClass *TextureClass::Get_Surface_Level(unsigned int level)
 		return nullptr;
 	}
 
-	IDirect3DSurface8 *d3d_surface = nullptr;
+	GfxSurface *d3d_surface = nullptr;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface));
 	SurfaceClass *surface = new SurfaceClass(d3d_surface);
 	d3d_surface->Release();
@@ -1004,7 +1004,7 @@ void TextureClass::Get_Level_Description( SurfaceClass::SurfaceDescription & des
 //! Get D3D surface from mip level
 /*!
 */
-IDirect3DSurface8 *TextureClass::Get_D3D_Surface_Level(unsigned int level)
+GfxSurface *TextureClass::Get_D3D_Surface_Level(unsigned int level)
 {
 	if (!Peek_D3D_Texture())
 	{
@@ -1012,7 +1012,7 @@ IDirect3DSurface8 *TextureClass::Get_D3D_Surface_Level(unsigned int level)
 		return nullptr;
 	}
 
-	IDirect3DSurface8 *d3d_surface = nullptr;
+	GfxSurface *d3d_surface = nullptr;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface));
 	return d3d_surface;
 }
@@ -1208,9 +1208,9 @@ ZTextureClass::ZTextureClass
 	D3DPOOL d3dpool=(D3DPOOL)0;
 	switch (pool)
 	{
-	case POOL_DEFAULT: d3dpool=D3DPOOL_DEFAULT; break;
-	case POOL_MANAGED: d3dpool=D3DPOOL_MANAGED; break;
-	case POOL_SYSTEMMEM: d3dpool=D3DPOOL_SYSTEMMEM;	break;
+	case POOL_DEFAULT: d3dpool=GFX_POOL_DEFAULT; break;
+	case POOL_MANAGED: d3dpool=GFX_POOL_MANAGED; break;
+	case POOL_SYSTEMMEM: d3dpool=GFX_POOL_SYSTEMMEM;	break;
 	default:	WWASSERT(0);
 	}
 
@@ -1262,12 +1262,12 @@ void ZTextureClass::Apply(unsigned int stage)
 */
 void ZTextureClass::Apply_New_Surface
 (
-	IDirect3DBaseTexture8* d3d_texture,
+	GfxBaseTexture* d3d_texture,
 	bool initialized,
 	bool disable_auto_invalidation
 )
 {
-	IDirect3DBaseTexture8* d3d_tex=Peek_D3D_Base_Texture();
+	GfxBaseTexture* d3d_tex=Peek_D3D_Base_Texture();
 
 	if (d3d_tex) d3d_tex->Release();
 
@@ -1278,7 +1278,7 @@ void ZTextureClass::Apply_New_Surface
 	if (disable_auto_invalidation) InactivationTime = 0;
 
 	WWASSERT(Peek_D3D_Texture());
-	IDirect3DSurface8* surface;
+	GfxSurface* surface;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0,&surface));
 	D3DSURFACE_DESC d3d_desc;
 	::ZeroMemory(&d3d_desc, sizeof(D3DSURFACE_DESC));
@@ -1296,7 +1296,7 @@ void ZTextureClass::Apply_New_Surface
 //! Get D3D surface from mip level
 /*!
 */
-IDirect3DSurface8* ZTextureClass::Get_D3D_Surface_Level(unsigned int level)
+GfxSurface* ZTextureClass::Get_D3D_Surface_Level(unsigned int level)
 {
 	if (!Peek_D3D_Texture())
 	{
@@ -1304,7 +1304,7 @@ IDirect3DSurface8* ZTextureClass::Get_D3D_Surface_Level(unsigned int level)
 		return nullptr;
 	}
 
-	IDirect3DSurface8 *d3d_surface = nullptr;
+	GfxSurface *d3d_surface = nullptr;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(level, &d3d_surface));
 	return d3d_surface;
 }
@@ -1362,9 +1362,9 @@ CubeTextureClass::CubeTextureClass
 	D3DPOOL d3dpool=(D3DPOOL)0;
 	switch(pool)
 	{
-	case POOL_DEFAULT		: d3dpool=D3DPOOL_DEFAULT; break;
-	case POOL_MANAGED		: d3dpool=D3DPOOL_MANAGED; break;
-	case POOL_SYSTEMMEM	: d3dpool=D3DPOOL_SYSTEMMEM; break;
+	case POOL_DEFAULT		: d3dpool=GFX_POOL_DEFAULT; break;
+	case POOL_MANAGED		: d3dpool=GFX_POOL_MANAGED; break;
+	case POOL_SYSTEMMEM	: d3dpool=GFX_POOL_SYSTEMMEM; break;
 	default: WWASSERT(0);
 	}
 
@@ -1537,7 +1537,7 @@ CubeTextureClass::CubeTextureClass
 }
 
 // ----------------------------------------------------------------------------
-CubeTextureClass::CubeTextureClass(IDirect3DBaseTexture8* d3d_texture)
+CubeTextureClass::CubeTextureClass(GfxBaseTexture* d3d_texture)
 :	TextureBaseClass
 	(
 		0,
@@ -1551,7 +1551,7 @@ CubeTextureClass::CubeTextureClass(IDirect3DBaseTexture8* d3d_texture)
 	IsReducible=false;
 
 	Peek_Texture()->AddRef();
-	IDirect3DSurface8* surface;
+	GfxSurface* surface;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0,&surface));
 	D3DSURFACE_DESC d3d_desc;
 	::ZeroMemory(&d3d_desc, sizeof(D3DSURFACE_DESC));
@@ -1581,12 +1581,12 @@ CubeTextureClass::CubeTextureClass(IDirect3DBaseTexture8* d3d_texture)
 */
 void CubeTextureClass::Apply_New_Surface
 (
-	IDirect3DBaseTexture8* d3d_texture,
+	GfxBaseTexture* d3d_texture,
 	bool initialized,
 	bool disable_auto_invalidation
 )
 {
-	IDirect3DBaseTexture8* d3d_tex=Peek_D3D_Base_Texture();
+	GfxBaseTexture* d3d_tex=Peek_D3D_Base_Texture();
 
 	if (d3d_tex) d3d_tex->Release();
 
@@ -1646,9 +1646,9 @@ VolumeTextureClass::VolumeTextureClass
 	D3DPOOL d3dpool=(D3DPOOL)0;
 	switch(pool)
 	{
-	case POOL_DEFAULT		: d3dpool=D3DPOOL_DEFAULT; break;
-	case POOL_MANAGED		: d3dpool=D3DPOOL_MANAGED; break;
-	case POOL_SYSTEMMEM	: d3dpool=D3DPOOL_SYSTEMMEM; break;
+	case POOL_DEFAULT		: d3dpool=GFX_POOL_DEFAULT; break;
+	case POOL_MANAGED		: d3dpool=GFX_POOL_MANAGED; break;
+	case POOL_SYSTEMMEM	: d3dpool=GFX_POOL_SYSTEMMEM; break;
 	default: WWASSERT(0);
 	}
 
@@ -1822,7 +1822,7 @@ CubeTextureClass::CubeTextureClass
 }
 
 // ----------------------------------------------------------------------------
-CubeTextureClass::CubeTextureClass(IDirect3DBaseTexture8* d3d_texture)
+CubeTextureClass::CubeTextureClass(GfxBaseTexture* d3d_texture)
 :	TextureBaseClass
 	(
 		0,
@@ -1836,7 +1836,7 @@ CubeTextureClass::CubeTextureClass(IDirect3DBaseTexture8* d3d_texture)
 	IsReducible=false;
 
 	Peek_Texture()->AddRef();
-	IDirect3DSurface8* surface;
+	GfxSurface* surface;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0,&surface));
 	D3DSURFACE_DESC d3d_desc;
 	::ZeroMemory(&d3d_desc, sizeof(D3DSURFACE_DESC));
@@ -1869,12 +1869,12 @@ CubeTextureClass::CubeTextureClass(IDirect3DBaseTexture8* d3d_texture)
 */
 void VolumeTextureClass::Apply_New_Surface
 (
-	IDirect3DBaseTexture8* d3d_texture,
+	GfxBaseTexture* d3d_texture,
 	bool initialized,
 	bool disable_auto_invalidation
 )
 {
-	IDirect3DBaseTexture8* d3d_tex=Peek_D3D_Base_Texture();
+	GfxBaseTexture* d3d_tex=Peek_D3D_Base_Texture();
 
 	if (d3d_tex) d3d_tex->Release();
 

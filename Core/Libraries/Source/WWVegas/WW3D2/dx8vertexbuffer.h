@@ -43,7 +43,7 @@
 #include "WWDebug/wwdebug.h"
 #include "dx8fvf.h"
 
-const unsigned dynamic_fvf_type=D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX2|D3DFVF_DIFFUSE;
+const unsigned dynamic_fvf_type=GFX_FVF_XYZ|GFX_FVF_NORMAL|GFX_FVF_TEX2|GFX_FVF_DIFFUSE;
 
 class DX8Wrapper;
 class SortingRendererClass;
@@ -53,7 +53,7 @@ class Vector4;
 class StringClass;
 class DX8VertexBufferClass;
 class FVFInfoClass;
-struct IDirect3DVertexBuffer8;
+#include "gfx_d3d8_map.h"
 class VertexBufferClass;
 struct VertexFormatXYZNDUV2;
 
@@ -185,7 +185,7 @@ public:
 inline VertexFormatXYZNDUV2 * DynamicVBAccessClass::WriteLockClass::Get_Formatted_Vertex_Array()
 {
 	// assert that the format of the dynamic vertex buffer is still what we think it is.
-	WWASSERT(DynamicVBAccess->VertexBuffer->FVF_Info().Get_FVF() == (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX2|D3DFVF_DIFFUSE));
+	WWASSERT(DynamicVBAccess->VertexBuffer->FVF_Info().Get_FVF() == (GFX_FVF_XYZ|GFX_FVF_NORMAL|GFX_FVF_TEX2|GFX_FVF_DIFFUSE));
 	return Vertices;
 }
 
@@ -214,7 +214,7 @@ public:
 	DX8VertexBufferClass(const Vector3* vertices, const Vector4* diffuse, const Vector2* tex_coords, unsigned short VertexCount,UsageType usage=USAGE_DEFAULT);
 	DX8VertexBufferClass(const Vector3* vertices, const Vector2* tex_coords, unsigned short VertexCount,UsageType usage=USAGE_DEFAULT);
 
-	IDirect3DVertexBuffer8* Get_DX8_Vertex_Buffer() { return VertexBuffer; }
+	GfxVertexBuffer* Get_DX8_Vertex_Buffer() { return VertexBuffer; }
 
 	void Copy(const Vector3* loc, unsigned first_vertex, unsigned count);
 	void Copy(const Vector3* loc, const Vector2* uv, unsigned first_vertex, unsigned count);
@@ -224,7 +224,7 @@ public:
 	void Copy(const Vector3* loc, const Vector2* uv, const Vector4* diffuse, unsigned first_vertex, unsigned count);
 
 protected:
-	IDirect3DVertexBuffer8*		VertexBuffer;
+	GfxVertexBuffer*		VertexBuffer;
 
 	void Create_Vertex_Buffer(UsageType usage);
 };

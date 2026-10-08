@@ -617,7 +617,7 @@ void Render2DClass::Render()
 	int width, height, bits;
 	bool windowed;
 	WW3D::Get_Device_Resolution( width, height, bits, windowed );
-	D3DVIEWPORT8 vp = { 0 };
+	GfxViewport vp = { 0 };
 	vp.X			= 0;
 	vp.Y			= 0;
 	vp.Width		= width;

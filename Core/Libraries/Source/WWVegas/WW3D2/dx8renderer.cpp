@@ -435,14 +435,14 @@ DX8FVFCategoryContainer::DX8FVFCategoryContainer(unsigned FVF_,bool sorting_)
 	AnythingToRender(false),
 	AnyDelayedPassesToRender(false)
 {
-	if ((FVF&D3DFVF_TEX1)==D3DFVF_TEX1) uv_coordinate_channels=1;
-	if ((FVF&D3DFVF_TEX2)==D3DFVF_TEX2) uv_coordinate_channels=2;
-	if ((FVF&D3DFVF_TEX3)==D3DFVF_TEX3) uv_coordinate_channels=3;
-	if ((FVF&D3DFVF_TEX4)==D3DFVF_TEX4) uv_coordinate_channels=4;
-	if ((FVF&D3DFVF_TEX5)==D3DFVF_TEX5) uv_coordinate_channels=5;
-	if ((FVF&D3DFVF_TEX6)==D3DFVF_TEX6) uv_coordinate_channels=6;
-	if ((FVF&D3DFVF_TEX7)==D3DFVF_TEX7) uv_coordinate_channels=7;
-	if ((FVF&D3DFVF_TEX8)==D3DFVF_TEX8) uv_coordinate_channels=8;
+	if ((FVF&GFX_FVF_TEX1)==GFX_FVF_TEX1) uv_coordinate_channels=1;
+	if ((FVF&GFX_FVF_TEX2)==GFX_FVF_TEX2) uv_coordinate_channels=2;
+	if ((FVF&GFX_FVF_TEX3)==GFX_FVF_TEX3) uv_coordinate_channels=3;
+	if ((FVF&GFX_FVF_TEX4)==GFX_FVF_TEX4) uv_coordinate_channels=4;
+	if ((FVF&GFX_FVF_TEX5)==GFX_FVF_TEX5) uv_coordinate_channels=5;
+	if ((FVF&GFX_FVF_TEX6)==GFX_FVF_TEX6) uv_coordinate_channels=6;
+	if ((FVF&GFX_FVF_TEX7)==GFX_FVF_TEX7) uv_coordinate_channels=7;
+	if ((FVF&GFX_FVF_TEX8)==GFX_FVF_TEX8) uv_coordinate_channels=8;
 }
 
 // ----------------------------------------------------------------------------
@@ -707,29 +707,29 @@ unsigned DX8FVFCategoryContainer::Define_FVF(MeshModelClass* mmc,bool enable_lig
 		return dynamic_fvf_type;
 	}
 
-	unsigned fvf=D3DFVF_XYZ;
+	unsigned fvf=GFX_FVF_XYZ;
 
 	int tex_coord_count=mmc->Get_UV_Array_Count();
 
 	if (mmc->Get_Color_Array(0,false)) {
-		fvf|=D3DFVF_DIFFUSE;
+		fvf|=GFX_FVF_DIFFUSE;
 	}
 	if (mmc->Get_Color_Array(1,false)) {
-		fvf|=D3DFVF_SPECULAR;
+		fvf|=GFX_FVF_SPECULAR;
 	}
 
 	switch (tex_coord_count) {
 	default:
 	case 0:
 		break;
-	case 1: fvf|=D3DFVF_TEX1; break;
-	case 2: fvf|=D3DFVF_TEX2; break;
-	case 3: fvf|=D3DFVF_TEX3; break;
-	case 4: fvf|=D3DFVF_TEX4; break;
-	case 5: fvf|=D3DFVF_TEX5; break;
-	case 6: fvf|=D3DFVF_TEX6; break;
-	case 7: fvf|=D3DFVF_TEX7; break;
-	case 8: fvf|=D3DFVF_TEX8; break;
+	case 1: fvf|=GFX_FVF_TEX1; break;
+	case 2: fvf|=GFX_FVF_TEX2; break;
+	case 3: fvf|=GFX_FVF_TEX3; break;
+	case 4: fvf|=GFX_FVF_TEX4; break;
+	case 5: fvf|=GFX_FVF_TEX5; break;
+	case 6: fvf|=GFX_FVF_TEX6; break;
+	case 7: fvf|=GFX_FVF_TEX7; break;
+	case 8: fvf|=GFX_FVF_TEX8; break;
 	}
 
 	if (!mmc->Needs_Vertex_Normals()) {
@@ -737,7 +737,7 @@ unsigned DX8FVFCategoryContainer::Define_FVF(MeshModelClass* mmc,bool enable_lig
 		return fvf;
 	}
 
-	fvf|=D3DFVF_NORMAL;	// Realtime-lit
+	fvf|=GFX_FVF_NORMAL;	// Realtime-lit
 	return fvf;
 }
 
@@ -1035,11 +1035,11 @@ void DX8RigidFVFCategoryContainer::Add_Mesh(MeshModelClass* mmc_)
 	{
 		*(Vector3*)(vb+fi.Get_Location_Offset())=locs[i];
 
-		if ((FVF&D3DFVF_NORMAL)==D3DFVF_NORMAL && norms) {
+		if ((FVF&GFX_FVF_NORMAL)==GFX_FVF_NORMAL && norms) {
 			*(Vector3*)(vb+fi.Get_Normal_Offset())=norms[i];
 		}
 
-		if ((FVF&D3DFVF_DIFFUSE)==D3DFVF_DIFFUSE) {
+		if ((FVF&GFX_FVF_DIFFUSE)==GFX_FVF_DIFFUSE) {
 			if (diffuse) {
 				*(unsigned int*)(vb+fi.Get_Diffuse_Offset())=diffuse[i];
 			} else {
@@ -1047,7 +1047,7 @@ void DX8RigidFVFCategoryContainer::Add_Mesh(MeshModelClass* mmc_)
 			}
 		}
 
-		if ((FVF&D3DFVF_SPECULAR)==D3DFVF_SPECULAR) {
+		if ((FVF&GFX_FVF_SPECULAR)==GFX_FVF_SPECULAR) {
 			if (specular) {
 				*(unsigned int*)(vb+fi.Get_Specular_Offset())=specular[i];
 			} else {
@@ -1063,28 +1063,28 @@ void DX8RigidFVFCategoryContainer::Add_Mesh(MeshModelClass* mmc_)
 	** Append the UV coordinates to the vertex buffer
 	*/
 	int uvcount = 0;
-	if ((FVF&D3DFVF_TEX1) == D3DFVF_TEX1) {
+	if ((FVF&GFX_FVF_TEX1) == GFX_FVF_TEX1) {
 		uvcount = 1;
 	}
-	if ((FVF&D3DFVF_TEX2) == D3DFVF_TEX2) {
+	if ((FVF&GFX_FVF_TEX2) == GFX_FVF_TEX2) {
 		uvcount = 2;
 	}
-	if ((FVF&D3DFVF_TEX3) == D3DFVF_TEX3) {
+	if ((FVF&GFX_FVF_TEX3) == GFX_FVF_TEX3) {
 		uvcount = 3;
 	}
-	if ((FVF&D3DFVF_TEX4) == D3DFVF_TEX4) {
+	if ((FVF&GFX_FVF_TEX4) == GFX_FVF_TEX4) {
 		uvcount = 4;
 	}
-	if ((FVF&D3DFVF_TEX5) == D3DFVF_TEX5) {
+	if ((FVF&GFX_FVF_TEX5) == GFX_FVF_TEX5) {
 		uvcount = 5;
 	}
-	if ((FVF&D3DFVF_TEX6) == D3DFVF_TEX6) {
+	if ((FVF&GFX_FVF_TEX6) == GFX_FVF_TEX6) {
 		uvcount = 6;
 	}
-	if ((FVF&D3DFVF_TEX7) == D3DFVF_TEX7) {
+	if ((FVF&GFX_FVF_TEX7) == GFX_FVF_TEX7) {
 		uvcount = 7;
 	}
-	if ((FVF&D3DFVF_TEX8) == D3DFVF_TEX8) {
+	if ((FVF&GFX_FVF_TEX8) == GFX_FVF_TEX8) {
 		uvcount = 8;
 	}
 

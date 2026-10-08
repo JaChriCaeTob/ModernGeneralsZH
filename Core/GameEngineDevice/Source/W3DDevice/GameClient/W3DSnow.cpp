@@ -28,7 +28,7 @@
 
 
 
-#define D3DFVF_POINTVERTEX (D3DFVF_XYZ)
+#define GFX_FVF_POINTVERTEX (GFX_FVF_XYZ)
 #define SNOW_BUFFER_SIZE 4096	//size of vertex buffer holding particles.
 #define SNOW_BATCH_SIZE	2048	//we render at most this many particles per drawprimitive call.  This number * 6 must be less than 65536 to fit into index buffer.
 
@@ -87,9 +87,9 @@ Bool W3DSnowManager::ReAcquireResources()
 
 			if (FAILED(DX8Wrapper::Raw_Create_Vertex_Buffer(
 				SNOW_BUFFER_SIZE*sizeof(POINTVERTEX),
-				D3DUSAGE_WRITEONLY|D3DUSAGE_DYNAMIC|D3DUSAGE_POINTS,
-				D3DFVF_POINTVERTEX,
-				D3DPOOL_DEFAULT,
+				GFX_USAGE_WRITEONLY|GFX_USAGE_DYNAMIC|GFX_USAGE_POINTS,
+				GFX_FVF_POINTVERTEX,
+				GFX_POOL_DEFAULT,
 				&m_VertexBufferD3D
 			)))
 				return FALSE;
@@ -271,7 +271,7 @@ void W3DSnowManager::renderSubBox(RenderInfoClass &rinfo, Int originX, Int origi
 		POINTVERTEX* verts;
 
 		if(m_VertexBufferD3D->Lock(m_dwBase * sizeof(POINTVERTEX), batchSize * sizeof(POINTVERTEX),
-			(unsigned char **) &verts, m_dwBase ? D3DLOCK_NOOVERWRITE : D3DLOCK_DISCARD) != D3D_OK )
+			(unsigned char **) &verts, m_dwBase ? GFX_LOCK_NOOVERWRITE : GFX_LOCK_DISCARD) != D3D_OK )
 			return;	//couldn't lock buffer.
 
 		Int numberInBatch=0;
@@ -433,7 +433,7 @@ void W3DSnowManager::render(RenderInfoClass &rinfo)
     DX8Wrapper::Set_DX8_Render_State( GFX_RS_POINTSCALE_C,  FtoDW(1.00f) );
 
 	DX8Wrapper::Raw_Set_Stream_Source( 0, m_VertexBufferD3D, sizeof(POINTVERTEX) );
-    DX8Wrapper::Raw_Set_Vertex_Shader( D3DFVF_POINTVERTEX );
+    DX8Wrapper::Raw_Set_Vertex_Shader( GFX_FVF_POINTVERTEX );
 	m_dwBase = SNOW_BUFFER_SIZE;	//start with a new vertex buffer each frame.
 
 	m_leafDim = 45;	//cull boxes that are 20x20 emitters in size. Making them much smaller will result in too many draw calls.

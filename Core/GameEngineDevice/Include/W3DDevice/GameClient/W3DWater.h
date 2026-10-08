@@ -155,9 +155,9 @@ protected:
 		float tu, tv;
 	};
 
-	LPDIRECT3DDEVICE8 m_pDev;						///<pointer to D3D Device
-	LPDIRECT3DVERTEXBUFFER8 m_vertexBufferD3D;		///<D3D vertex buffer
-	LPDIRECT3DINDEXBUFFER8	m_indexBufferD3D;	///<D3D index buffer
+	GfxDevice* m_pDev;						///<pointer to D3D Device
+	GfxVertexBuffer* m_vertexBufferD3D;		///<D3D vertex buffer
+	GfxIndexBuffer*	m_indexBufferD3D;	///<D3D index buffer
 	Int						m_vertexBufferD3DOffset;	///<location to start writing vertices
 	DWORD					m_dwWavePixelShader;	///<handle to D3D pixel shader
 
@@ -167,7 +167,7 @@ protected:
 	Bool					m_modernFrameReady;		///<this frame's back buffer copy exists, modern shaders may be used
 	TextureClass			*m_sceneCapture;		///<copy of the back buffer taken before the water is drawn
 	UnsignedInt				m_sceneCaptureW, m_sceneCaptureH;
-	LPDIRECT3DTEXTURE8		m_depthMapTexture;		///<terrain height of the whole map, sampled in world space
+	GfxTexture*		m_depthMapTexture;		///<terrain height of the whole map, sampled in world space
 	const void				*m_depthMapSource;		///<heightmap the depth texture was built from
 	Int						m_depthMapW, m_depthMapH, m_depthMapBorder;
 	Real					m_depthMapMin, m_depthMapRange;	///<terrain height = min + texel * range
@@ -194,8 +194,8 @@ protected:
 	DWORD					m_dwWaveVertexShader;	///<handle to D3D vertex shader
 	Int	m_numVertices;				///<number of vertices in D3D vertex buffer
 	Int m_numIndices;				///<number of indices in D3D index buffer
-	LPDIRECT3DTEXTURE8 m_pBumpTexture[NUM_BUMP_FRAMES]; ///<animation frames
-	LPDIRECT3DTEXTURE8 m_pBumpTexture2[NUM_BUMP_FRAMES]; ///<animation frames
+	GfxTexture* m_pBumpTexture[NUM_BUMP_FRAMES]; ///<animation frames
+	GfxTexture* m_pBumpTexture2[NUM_BUMP_FRAMES]; ///<animation frames
 	Real				m_fBumpFrame;	///<current animation frame
 	Real				m_fBumpScale;	///<scales bump map uv perturbation
 	TextureClass * m_pReflectionTexture;	///<render target for reflection
@@ -274,7 +274,7 @@ protected:
 	void testCurvedWater();	///<draw the sky layer (clouds, stars, etc.)
 	void renderSkyBody(Matrix3D *mat);	///<draw the sky body (sun, moon, etc.)
 	void renderWaterMesh();			///<draw the water surface mesh (deformed 3d mesh).
-	HRESULT initBumpMap(LPDIRECT3DTEXTURE8 *pTex, TextureClass *pBumpSource);	///<copies data into bump-map format.
+	HRESULT initBumpMap(GfxTexture* *pTex, TextureClass *pBumpSource);	///<copies data into bump-map format.
 	void renderMirror(CameraClass *cam);	///< Draw reflected scene into texture
 	void drawSea(RenderInfoClass & rinfo);	///< Draw the surface of the water
 	///bounding box of frustum clipped polygon plane

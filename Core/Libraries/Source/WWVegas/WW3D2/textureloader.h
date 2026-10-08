@@ -43,7 +43,7 @@
 #include "texture.h"
 
 class StringClass;
-struct IDirect3DTexture8;
+#include "gfx_d3d8_map.h"
 class TextureLoadTaskClass;
 class TextureLoadTaskListClass;
 
@@ -56,11 +56,11 @@ public:
 	// Modify given texture size to nearest valid size on current hardware.
 	static void Validate_Texture_Size(unsigned& width, unsigned& height, unsigned& depth);
 
-	static IDirect3DTexture8 * Load_Thumbnail(
+	static GfxTexture * Load_Thumbnail(
 		const StringClass& filename,const Vector3& hsv_shift);
 //		WW3DFormat texture_format);	// Pass WW3D_FORMAT_UNKNOWN if you don't care
 
-	static IDirect3DSurface8 *		Load_Surface_Immediate(
+	static GfxSurface *		Load_Surface_Immediate(
 		const StringClass& filename,
 		WW3DFormat surface_format,		// Pass WW3D_FORMAT_UNKNOWN if you don't care
 		bool allow_compression);
@@ -225,7 +225,7 @@ class TextureLoadTaskClass : public TextureLoadTaskListNodeClass
 		unsigned int			Get_Locked_Surface_Pitch(unsigned int level) const;
 
 		TextureBaseClass *	Peek_Texture				()				{ return Texture;			}
-		IDirect3DTexture8	*	Peek_D3D_Texture			()				{ return (IDirect3DTexture8*)D3DTexture;		}
+		GfxTexture	*	Peek_D3D_Texture			()				{ return (GfxTexture*)D3DTexture;		}
 
 		void						Set_Type						(TaskType t)		{ Type		= t;			}
 		void						Set_Priority				(PriorityType p)	{ Priority	= p;			}
@@ -250,7 +250,7 @@ class TextureLoadTaskClass : public TextureLoadTaskListNodeClass
 		void						Apply							(bool initialize);
 
 		TextureBaseClass*		Texture;
-		IDirect3DBaseTexture8*	D3DTexture;
+		GfxBaseTexture*	D3DTexture;
 		WW3DFormat				Format;
 
 		unsigned int			Width;

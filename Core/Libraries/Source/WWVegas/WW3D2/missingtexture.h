@@ -20,8 +20,7 @@
 
 #include "WWLib/always.h"
 
-struct IDirect3DTexture8;
-struct IDirect3DSurface8;
+#include "gfx_d3d8_map.h"
 
 class MissingTexture
 {
@@ -29,6 +28,6 @@ public:
 	static void _Init();
 	static void _Deinit();
 
-	static IDirect3DTexture8* _Get_Missing_Texture();		// Return a reference to missing texture
-	static IDirect3DSurface8* _Create_Missing_Surface();	// Create new surface which contain missing texture image
+	static GfxTexture* _Get_Missing_Texture();		// Return a reference to missing texture
+	static GfxSurface* _Create_Missing_Surface();	// Create new surface which contain missing texture image
 };

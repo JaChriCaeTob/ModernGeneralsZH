@@ -56,29 +56,29 @@ FVFInfoClass::FVFInfoClass(unsigned FVF_)
 	location_offset=0;
 	blend_offset=location_offset;
 
-	if ((FVF&D3DFVF_XYZ)==D3DFVF_XYZ) blend_offset+=3*sizeof(float);
+	if ((FVF&GFX_FVF_XYZ)==GFX_FVF_XYZ) blend_offset+=3*sizeof(float);
 	normal_offset=blend_offset;
 
-	if ( ((FVF&D3DFVF_XYZB4)==D3DFVF_XYZB4) &&
-		  ((FVF&D3DFVF_LASTBETA_UBYTE4)==D3DFVF_LASTBETA_UBYTE4) ) normal_offset+=3*sizeof(float)+sizeof(DWORD);
+	if ( ((FVF&GFX_FVF_XYZB4)==GFX_FVF_XYZB4) &&
+		  ((FVF&GFX_FVF_LASTBETA_UBYTE4)==GFX_FVF_LASTBETA_UBYTE4) ) normal_offset+=3*sizeof(float)+sizeof(DWORD);
 	diffuse_offset=normal_offset;
 
-	if ((FVF&D3DFVF_NORMAL)==D3DFVF_NORMAL) diffuse_offset+=3*sizeof(float);
+	if ((FVF&GFX_FVF_NORMAL)==GFX_FVF_NORMAL) diffuse_offset+=3*sizeof(float);
 	specular_offset=diffuse_offset;
 
-	if ((FVF&D3DFVF_DIFFUSE)==D3DFVF_DIFFUSE) specular_offset+=sizeof(DWORD);
+	if ((FVF&GFX_FVF_DIFFUSE)==GFX_FVF_DIFFUSE) specular_offset+=sizeof(DWORD);
 	texcoord_offset[0]=specular_offset;
 
-	if ((FVF&D3DFVF_SPECULAR)==D3DFVF_SPECULAR) texcoord_offset[0]+=sizeof(DWORD);
+	if ((FVF&GFX_FVF_SPECULAR)==GFX_FVF_SPECULAR) texcoord_offset[0]+=sizeof(DWORD);
 
 	for (unsigned int i=1; i<D3DDP_MAXTEXCOORD; i++)
 	{
 		texcoord_offset[i]=texcoord_offset[i-1];
 
-		if ((int(FVF)&D3DFVF_TEXCOORDSIZE1(i-1))==D3DFVF_TEXCOORDSIZE1(i-1)) texcoord_offset[i]+=sizeof(float);
-		else if ((int(FVF)&D3DFVF_TEXCOORDSIZE2(i-1))==D3DFVF_TEXCOORDSIZE2(i-1)) texcoord_offset[i]+=2*sizeof(float);
-		else if ((int(FVF)&D3DFVF_TEXCOORDSIZE3(i-1))==D3DFVF_TEXCOORDSIZE3(i-1)) texcoord_offset[i]+=3*sizeof(float);
-		else if ((int(FVF)&D3DFVF_TEXCOORDSIZE4(i-1))==D3DFVF_TEXCOORDSIZE4(i-1)) texcoord_offset[i]+=4*sizeof(float);
+		if ((int(FVF)&GFX_FVF_TEXCOORDSIZE1(i-1))==GFX_FVF_TEXCOORDSIZE1(i-1)) texcoord_offset[i]+=sizeof(float);
+		else if ((int(FVF)&GFX_FVF_TEXCOORDSIZE2(i-1))==GFX_FVF_TEXCOORDSIZE2(i-1)) texcoord_offset[i]+=2*sizeof(float);
+		else if ((int(FVF)&GFX_FVF_TEXCOORDSIZE3(i-1))==GFX_FVF_TEXCOORDSIZE3(i-1)) texcoord_offset[i]+=3*sizeof(float);
+		else if ((int(FVF)&GFX_FVF_TEXCOORDSIZE4(i-1))==GFX_FVF_TEXCOORDSIZE4(i-1)) texcoord_offset[i]+=4*sizeof(float);
 	}
 }
 

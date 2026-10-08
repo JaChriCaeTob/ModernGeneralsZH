@@ -117,7 +117,7 @@ int								DX8Wrapper::ResolutionHeight							= DEFAULT_RESOLUTION_HEIGHT;
 int								DX8Wrapper::BitDepth										= DEFAULT_BIT_DEPTH;
 int								DX8Wrapper::TextureBitDepth							= DEFAULT_TEXTURE_BIT_DEPTH;
 bool								DX8Wrapper::IsWindowed									= false;
-D3DFORMAT					DX8Wrapper::DisplayFormat	= D3DFMT_UNKNOWN;
+D3DFORMAT					DX8Wrapper::DisplayFormat	= GFX_FMT_UNKNOWN;
 D3DMULTISAMPLE_TYPE DX8Wrapper::MultiSampleAntiAliasing	= DEFAULT_MSAA;
 
 // shader system additions KJM v
@@ -138,7 +138,7 @@ Vector3							DX8Wrapper::Ambient_Color;
 bool								DX8Wrapper::world_identity;
 unsigned							DX8Wrapper::RenderStates[256];
 unsigned							DX8Wrapper::TextureStageStates[MAX_TEXTURE_STAGES][32];
-IDirect3DBaseTexture8 *		DX8Wrapper::Textures[MAX_TEXTURE_STAGES];
+GfxBaseTexture *		DX8Wrapper::Textures[MAX_TEXTURE_STAGES];
 RenderStateStruct				DX8Wrapper::render_state;
 unsigned							DX8Wrapper::render_state_changed;
 
@@ -146,11 +146,11 @@ bool								DX8Wrapper::FogEnable									= false;
 D3DCOLOR							DX8Wrapper::FogColor										= 0;
 
 IDirect3D8 *					DX8Wrapper::D3DInterface								= nullptr;
-IDirect3DDevice8 *			DX8Wrapper::D3DDevice									= nullptr;
-IDirect3DSurface8 *			DX8Wrapper::CurrentRenderTarget						= nullptr;
-IDirect3DSurface8 *			DX8Wrapper::CurrentDepthBuffer						= nullptr;
-IDirect3DSurface8 *			DX8Wrapper::DefaultRenderTarget						= nullptr;
-IDirect3DSurface8 *			DX8Wrapper::DefaultDepthBuffer						= nullptr;
+GfxDevice *			DX8Wrapper::D3DDevice									= nullptr;
+GfxSurface *			DX8Wrapper::CurrentRenderTarget						= nullptr;
+GfxSurface *			DX8Wrapper::CurrentDepthBuffer						= nullptr;
+GfxSurface *			DX8Wrapper::DefaultRenderTarget						= nullptr;
+GfxSurface *			DX8Wrapper::DefaultDepthBuffer						= nullptr;
 bool								DX8Wrapper::IsRenderToTexture							= false;
 
 unsigned							DX8Wrapper::_MainThreadID								= 0;
@@ -251,7 +251,7 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 	WWASSERT(!IsInitted);
 
 	// zero memory
-	memset(Textures,0,sizeof(IDirect3DBaseTexture8*)*MAX_TEXTURE_STAGES);
+	memset(Textures,0,sizeof(GfxBaseTexture*)*MAX_TEXTURE_STAGES);
 	memset(RenderStates,0,sizeof(unsigned)*256);
 	memset(TextureStageStates,0,sizeof(unsigned)*32*MAX_TEXTURE_STAGES);
 	memset(Vertex_Shader_Constants,0,sizeof(Vector4)*MAX_VERTEX_SHADER_CONSTANTS);
@@ -330,7 +330,7 @@ void DX8Wrapper::Shutdown()
 {
 	if (D3DDevice) {
 
-		Set_Render_Target ((IDirect3DSurface8 *)nullptr);
+		Set_Render_Target ((GfxSurface *)nullptr);
 		Release_Device();
 	}
 
@@ -566,14 +566,14 @@ bool DX8Wrapper::Create_Device()
 		// The device selection may fail because the device lied that it supports 32 bit zbuffer with 16 bit
 		// display. This happens at least on Voodoo2.
 
-		if ((_PresentParameters.BackBufferFormat==D3DFMT_R5G6B5 ||
-			_PresentParameters.BackBufferFormat==D3DFMT_X1R5G5B5 ||
-			_PresentParameters.BackBufferFormat==D3DFMT_A1R5G5B5) &&
-			(_PresentParameters.AutoDepthStencilFormat==D3DFMT_D32 ||
-			_PresentParameters.AutoDepthStencilFormat==D3DFMT_D24S8 ||
-			_PresentParameters.AutoDepthStencilFormat==D3DFMT_D24X8))
+		if ((_PresentParameters.BackBufferFormat==GFX_FMT_R5G6B5 ||
+			_PresentParameters.BackBufferFormat==GFX_FMT_X1R5G5B5 ||
+			_PresentParameters.BackBufferFormat==GFX_FMT_A1R5G5B5) &&
+			(_PresentParameters.AutoDepthStencilFormat==GFX_FMT_D32 ||
+			_PresentParameters.AutoDepthStencilFormat==GFX_FMT_D24S8 ||
+			_PresentParameters.AutoDepthStencilFormat==GFX_FMT_D24X8))
 		{
-			_PresentParameters.AutoDepthStencilFormat=D3DFMT_D16;
+			_PresentParameters.AutoDepthStencilFormat=GFX_FMT_D16;
 			hr = D3DInterface->CreateDevice
 			(
 				CurRenderDevice,
@@ -745,12 +745,12 @@ void DX8Wrapper::Enumerate_Devices()
 					int bits = 0;
 					switch (d3dmode.Format)
 					{
-						case D3DFMT_R8G8B8:
-						case D3DFMT_A8R8G8B8:
-						case D3DFMT_X8R8G8B8:		bits = 32; break;
+						case GFX_FMT_R8G8B8:
+						case GFX_FMT_A8R8G8B8:
+						case GFX_FMT_X8R8G8B8:		bits = 32; break;
 
-						case D3DFMT_R5G6B5:
-						case D3DFMT_X1R5G5B5:		bits = 16; break;
+						case GFX_FMT_R5G6B5:
+						case GFX_FMT_X1R5G5B5:		bits = 16; break;
 					}
 
 					// Some cards fail in certain modes, DX8Caps keeps list of those.
@@ -834,42 +834,42 @@ void DX8Wrapper::Get_Format_Name(unsigned int format, StringClass *tex_format)
 {
 		*tex_format="Unknown";
 		switch (format) {
-		case D3DFMT_A8R8G8B8: *tex_format="D3DFMT_A8R8G8B8"; break;
-		case D3DFMT_R8G8B8: *tex_format="D3DFMT_R8G8B8"; break;
-		case D3DFMT_A4R4G4B4: *tex_format="D3DFMT_A4R4G4B4"; break;
-		case D3DFMT_A1R5G5B5: *tex_format="D3DFMT_A1R5G5B5"; break;
-		case D3DFMT_R5G6B5: *tex_format="D3DFMT_R5G6B5"; break;
-		case D3DFMT_L8: *tex_format="D3DFMT_L8"; break;
-		case D3DFMT_A8: *tex_format="D3DFMT_A8"; break;
-		case D3DFMT_P8: *tex_format="D3DFMT_P8"; break;
-		case D3DFMT_X8R8G8B8: *tex_format="D3DFMT_X8R8G8B8"; break;
-		case D3DFMT_X1R5G5B5: *tex_format="D3DFMT_X1R5G5B5"; break;
-		case D3DFMT_R3G3B2: *tex_format="D3DFMT_R3G3B2"; break;
-		case D3DFMT_A8R3G3B2: *tex_format="D3DFMT_A8R3G3B2"; break;
-		case D3DFMT_X4R4G4B4: *tex_format="D3DFMT_X4R4G4B4"; break;
-		case D3DFMT_A8P8: *tex_format="D3DFMT_A8P8"; break;
-		case D3DFMT_A8L8: *tex_format="D3DFMT_A8L8"; break;
-		case D3DFMT_A4L4: *tex_format="D3DFMT_A4L4"; break;
-		case D3DFMT_V8U8: *tex_format="D3DFMT_V8U8"; break;
-		case D3DFMT_L6V5U5: *tex_format="D3DFMT_L6V5U5"; break;
-		case D3DFMT_X8L8V8U8: *tex_format="D3DFMT_X8L8V8U8"; break;
-		case D3DFMT_Q8W8V8U8: *tex_format="D3DFMT_Q8W8V8U8"; break;
-		case D3DFMT_V16U16: *tex_format="D3DFMT_V16U16"; break;
-		case D3DFMT_W11V11U10: *tex_format="D3DFMT_W11V11U10"; break;
-		case D3DFMT_UYVY: *tex_format="D3DFMT_UYVY"; break;
-		case D3DFMT_YUY2: *tex_format="D3DFMT_YUY2"; break;
-		case D3DFMT_DXT1: *tex_format="D3DFMT_DXT1"; break;
-		case D3DFMT_DXT2: *tex_format="D3DFMT_DXT2"; break;
-		case D3DFMT_DXT3: *tex_format="D3DFMT_DXT3"; break;
-		case D3DFMT_DXT4: *tex_format="D3DFMT_DXT4"; break;
-		case D3DFMT_DXT5: *tex_format="D3DFMT_DXT5"; break;
-		case D3DFMT_D16_LOCKABLE: *tex_format="D3DFMT_D16_LOCKABLE"; break;
-		case D3DFMT_D32: *tex_format="D3DFMT_D32"; break;
-		case D3DFMT_D15S1: *tex_format="D3DFMT_D15S1"; break;
-		case D3DFMT_D24S8: *tex_format="D3DFMT_D24S8"; break;
-		case D3DFMT_D16: *tex_format="D3DFMT_D16"; break;
-		case D3DFMT_D24X8: *tex_format="D3DFMT_D24X8"; break;
-		case D3DFMT_D24X4S4: *tex_format="D3DFMT_D24X4S4"; break;
+		case GFX_FMT_A8R8G8B8: *tex_format="D3DFMT_A8R8G8B8"; break;
+		case GFX_FMT_R8G8B8: *tex_format="D3DFMT_R8G8B8"; break;
+		case GFX_FMT_A4R4G4B4: *tex_format="D3DFMT_A4R4G4B4"; break;
+		case GFX_FMT_A1R5G5B5: *tex_format="D3DFMT_A1R5G5B5"; break;
+		case GFX_FMT_R5G6B5: *tex_format="D3DFMT_R5G6B5"; break;
+		case GFX_FMT_L8: *tex_format="D3DFMT_L8"; break;
+		case GFX_FMT_A8: *tex_format="D3DFMT_A8"; break;
+		case GFX_FMT_P8: *tex_format="D3DFMT_P8"; break;
+		case GFX_FMT_X8R8G8B8: *tex_format="D3DFMT_X8R8G8B8"; break;
+		case GFX_FMT_X1R5G5B5: *tex_format="D3DFMT_X1R5G5B5"; break;
+		case GFX_FMT_R3G3B2: *tex_format="D3DFMT_R3G3B2"; break;
+		case GFX_FMT_A8R3G3B2: *tex_format="D3DFMT_A8R3G3B2"; break;
+		case GFX_FMT_X4R4G4B4: *tex_format="D3DFMT_X4R4G4B4"; break;
+		case GFX_FMT_A8P8: *tex_format="D3DFMT_A8P8"; break;
+		case GFX_FMT_A8L8: *tex_format="D3DFMT_A8L8"; break;
+		case GFX_FMT_A4L4: *tex_format="D3DFMT_A4L4"; break;
+		case GFX_FMT_V8U8: *tex_format="D3DFMT_V8U8"; break;
+		case GFX_FMT_L6V5U5: *tex_format="D3DFMT_L6V5U5"; break;
+		case GFX_FMT_X8L8V8U8: *tex_format="D3DFMT_X8L8V8U8"; break;
+		case GFX_FMT_Q8W8V8U8: *tex_format="D3DFMT_Q8W8V8U8"; break;
+		case GFX_FMT_V16U16: *tex_format="D3DFMT_V16U16"; break;
+		case GFX_FMT_W11V11U10: *tex_format="D3DFMT_W11V11U10"; break;
+		case GFX_FMT_UYVY: *tex_format="D3DFMT_UYVY"; break;
+		case GFX_FMT_YUY2: *tex_format="D3DFMT_YUY2"; break;
+		case GFX_FMT_DXT1: *tex_format="D3DFMT_DXT1"; break;
+		case GFX_FMT_DXT2: *tex_format="D3DFMT_DXT2"; break;
+		case GFX_FMT_DXT3: *tex_format="D3DFMT_DXT3"; break;
+		case GFX_FMT_DXT4: *tex_format="D3DFMT_DXT4"; break;
+		case GFX_FMT_DXT5: *tex_format="D3DFMT_DXT5"; break;
+		case GFX_FMT_D16_LOCKABLE: *tex_format="D3DFMT_D16_LOCKABLE"; break;
+		case GFX_FMT_D32: *tex_format="D3DFMT_D32"; break;
+		case GFX_FMT_D15S1: *tex_format="D3DFMT_D15S1"; break;
+		case GFX_FMT_D24S8: *tex_format="D3DFMT_D24S8"; break;
+		case GFX_FMT_D16: *tex_format="D3DFMT_D16"; break;
+		case GFX_FMT_D24X8: *tex_format="D3DFMT_D24X8"; break;
+		case GFX_FMT_D24X4S4: *tex_format="D3DFMT_D24X4S4"; break;
 		default:	break;
 		}
 }
@@ -1007,24 +1007,24 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 
 		// In windowed mode, define the bitdepth from desktop mode (as it can't be changed)
 		switch (_PresentParameters.BackBufferFormat) {
-		case D3DFMT_X8R8G8B8:
-		case D3DFMT_A8R8G8B8:
-		case D3DFMT_R8G8B8: BitDepth=32; break;
-		case D3DFMT_A4R4G4B4:
-		case D3DFMT_A1R5G5B5:
-		case D3DFMT_R5G6B5: BitDepth=16; break;
-		case D3DFMT_L8:
-		case D3DFMT_A8:
-		case D3DFMT_P8: BitDepth=8; break;
+		case GFX_FMT_X8R8G8B8:
+		case GFX_FMT_A8R8G8B8:
+		case GFX_FMT_R8G8B8: BitDepth=32; break;
+		case GFX_FMT_A4R4G4B4:
+		case GFX_FMT_A1R5G5B5:
+		case GFX_FMT_R5G6B5: BitDepth=16; break;
+		case GFX_FMT_L8:
+		case GFX_FMT_A8:
+		case GFX_FMT_P8: BitDepth=8; break;
 		default:
 			// Unknown backbuffer format probably means the device can't do windowed
 			return false;
 		}
 
-		if (BitDepth==32 && D3DInterface->CheckDeviceType(0,D3DDEVTYPE_HAL,desktop_mode.Format,D3DFMT_A8R8G8B8, TRUE) == D3D_OK)
+		if (BitDepth==32 && D3DInterface->CheckDeviceType(0,D3DDEVTYPE_HAL,desktop_mode.Format,GFX_FMT_A8R8G8B8, TRUE) == D3D_OK)
 		{
 			//promote 32-bit modes to include destination alpha
-			_PresentParameters.BackBufferFormat = D3DFMT_A8R8G8B8;
+			_PresentParameters.BackBufferFormat = GFX_FMT_A8R8G8B8;
 		}
 
 		/*
@@ -1035,13 +1035,13 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 			// If opening 32 bit mode failed, try 16 bit, even if the desktop happens to be 32 bit
 			if (BitDepth==32) {
 				BitDepth=16;
-				_PresentParameters.BackBufferFormat=D3DFMT_R5G6B5;
+				_PresentParameters.BackBufferFormat=GFX_FMT_R5G6B5;
 				if (!Find_Z_Mode(_PresentParameters.BackBufferFormat,_PresentParameters.BackBufferFormat,&_PresentParameters.AutoDepthStencilFormat)) {
-					_PresentParameters.AutoDepthStencilFormat=D3DFMT_UNKNOWN;
+					_PresentParameters.AutoDepthStencilFormat=GFX_FMT_UNKNOWN;
 				}
 			}
 			else {
-				_PresentParameters.AutoDepthStencilFormat=D3DFMT_UNKNOWN;
+				_PresentParameters.AutoDepthStencilFormat=GFX_FMT_UNKNOWN;
 			}
 		}
 
@@ -1057,12 +1057,12 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 	/*
 	** Set default for depth stencil format if auto Z buffer failed.
 	*/
-	if (_PresentParameters.AutoDepthStencilFormat==D3DFMT_UNKNOWN) {
+	if (_PresentParameters.AutoDepthStencilFormat==GFX_FMT_UNKNOWN) {
 		if (BitDepth==32) {
-			_PresentParameters.AutoDepthStencilFormat=D3DFMT_D32;
+			_PresentParameters.AutoDepthStencilFormat=GFX_FMT_D32;
 		}
 		else {
-			_PresentParameters.AutoDepthStencilFormat=D3DFMT_D16;
+			_PresentParameters.AutoDepthStencilFormat=GFX_FMT_D16;
 		}
 	}
 
@@ -1202,8 +1202,8 @@ int DX8Wrapper::Get_Swap_Interval()
 
 bool DX8Wrapper::Has_Stencil()
 {
-	bool has_stencil = (_PresentParameters.AutoDepthStencilFormat == D3DFMT_D24S8 ||
-						_PresentParameters.AutoDepthStencilFormat == D3DFMT_D24X4S4);
+	bool has_stencil = (_PresentParameters.AutoDepthStencilFormat == GFX_FMT_D24S8 ||
+						_PresentParameters.AutoDepthStencilFormat == GFX_FMT_D24X4S4);
 	return has_stencil;
 }
 
@@ -1443,16 +1443,16 @@ bool DX8Wrapper::Find_Color_And_Z_Mode(int resx,int resy,int bitdepth,D3DFORMAT 
 {
 	static D3DFORMAT _formats16[] =
 	{
-		D3DFMT_R5G6B5,
-		D3DFMT_X1R5G5B5,
-		D3DFMT_A1R5G5B5
+		GFX_FMT_R5G6B5,
+		GFX_FMT_X1R5G5B5,
+		GFX_FMT_A1R5G5B5
 	};
 
 	static D3DFORMAT _formats32[] =
 	{
-		D3DFMT_A8R8G8B8,
-		D3DFMT_X8R8G8B8,
-		D3DFMT_R8G8B8,
+		GFX_FMT_A8R8G8B8,
+		GFX_FMT_X8R8G8B8,
+		GFX_FMT_R8G8B8,
 	};
 
 	/*
@@ -1487,10 +1487,10 @@ bool DX8Wrapper::Find_Color_And_Z_Mode(int resx,int resy,int bitdepth,D3DFORMAT 
 		*set_backbuffer=*set_colorbuffer = format_table[format_index];
 	}
 
-	if (bitdepth==32 && *set_colorbuffer == D3DFMT_X8R8G8B8 && D3DInterface->CheckDeviceType(0,D3DDEVTYPE_HAL,*set_colorbuffer,D3DFMT_A8R8G8B8, TRUE) == D3D_OK)
+	if (bitdepth==32 && *set_colorbuffer == GFX_FMT_X8R8G8B8 && D3DInterface->CheckDeviceType(0,D3DDEVTYPE_HAL,*set_colorbuffer,GFX_FMT_A8R8G8B8, TRUE) == D3D_OK)
 	{
 		//promote 32-bit modes to include destination alpha when supported
-		*set_backbuffer = D3DFMT_A8R8G8B8;
+		*set_backbuffer = GFX_FMT_A8R8G8B8;
 	}
 
 	/*
@@ -1559,44 +1559,44 @@ bool DX8Wrapper::Find_Color_Mode(D3DFORMAT colorbuffer, int resx, int resy, UINT
 bool DX8Wrapper::Find_Z_Mode(D3DFORMAT colorbuffer,D3DFORMAT backbuffer, D3DFORMAT *zmode)
 {
 	//MW: Swapped the next 2 tests so that Stencil modes get tested first.
-	if (Test_Z_Mode(colorbuffer,backbuffer,D3DFMT_D24S8))
+	if (Test_Z_Mode(colorbuffer,backbuffer,GFX_FMT_D24S8))
 	{
-		*zmode=D3DFMT_D24S8;
+		*zmode=GFX_FMT_D24S8;
 		WWDEBUG_SAY(("Found zbuffer mode D3DFMT_D24S8"));
 		return true;
 	}
 
-	if (Test_Z_Mode(colorbuffer,backbuffer,D3DFMT_D32))
+	if (Test_Z_Mode(colorbuffer,backbuffer,GFX_FMT_D32))
 	{
-		*zmode=D3DFMT_D32;
+		*zmode=GFX_FMT_D32;
 		WWDEBUG_SAY(("Found zbuffer mode D3DFMT_D32"));
 		return true;
 	}
 
-	if (Test_Z_Mode(colorbuffer,backbuffer,D3DFMT_D24X8))
+	if (Test_Z_Mode(colorbuffer,backbuffer,GFX_FMT_D24X8))
 	{
-		*zmode=D3DFMT_D24X8;
+		*zmode=GFX_FMT_D24X8;
 		WWDEBUG_SAY(("Found zbuffer mode D3DFMT_D24X8"));
 		return true;
 	}
 
-	if (Test_Z_Mode(colorbuffer,backbuffer,D3DFMT_D24X4S4))
+	if (Test_Z_Mode(colorbuffer,backbuffer,GFX_FMT_D24X4S4))
 	{
-		*zmode=D3DFMT_D24X4S4;
+		*zmode=GFX_FMT_D24X4S4;
 		WWDEBUG_SAY(("Found zbuffer mode D3DFMT_D24X4S4"));
 		return true;
 	}
 
-	if (Test_Z_Mode(colorbuffer,backbuffer,D3DFMT_D16))
+	if (Test_Z_Mode(colorbuffer,backbuffer,GFX_FMT_D16))
 	{
-		*zmode=D3DFMT_D16;
+		*zmode=GFX_FMT_D16;
 		WWDEBUG_SAY(("Found zbuffer mode D3DFMT_D16"));
 		return true;
 	}
 
-	if (Test_Z_Mode(colorbuffer,backbuffer,D3DFMT_D15S1))
+	if (Test_Z_Mode(colorbuffer,backbuffer,GFX_FMT_D15S1))
 	{
-		*zmode=D3DFMT_D15S1;
+		*zmode=GFX_FMT_D15S1;
 		WWDEBUG_SAY(("Found zbuffer mode D3DFMT_D15S1"));
 		return true;
 	}
@@ -1610,7 +1610,7 @@ bool DX8Wrapper::Test_Z_Mode(D3DFORMAT colorbuffer,D3DFORMAT backbuffer, D3DFORM
 {
 	// See if we have this mode first
 	if (FAILED(D3DInterface->CheckDeviceFormat(D3DADAPTER_DEFAULT,WW3D_DEVTYPE,
-		colorbuffer,D3DUSAGE_DEPTHSTENCIL,D3DRTYPE_SURFACE,zmode)))
+		colorbuffer,GFX_USAGE_DEPTHSTENCIL,D3DRTYPE_SURFACE,zmode)))
 	{
 		WWDEBUG_SAY(("CheckDeviceFormat failed.  Colorbuffer format = %d  Zbufferformat = %d",colorbuffer,zmode));
 		return false;
@@ -1786,11 +1786,11 @@ void DX8Wrapper::Clear(bool clear_color, bool clear_z_stencil, const Vector3 &co
 
 	// If we try to clear a stencil buffer which is not there, the entire call will fail
 	// KJM fixed this to get format from back buffer (incase render to texture is used)
-	/*bool has_stencil = (	_PresentParameters.AutoDepthStencilFormat == D3DFMT_D15S1 ||
-								_PresentParameters.AutoDepthStencilFormat == D3DFMT_D24S8 ||
-								_PresentParameters.AutoDepthStencilFormat == D3DFMT_D24X4S4);*/
+	/*bool has_stencil = (	_PresentParameters.AutoDepthStencilFormat == GFX_FMT_D15S1 ||
+								_PresentParameters.AutoDepthStencilFormat == GFX_FMT_D24S8 ||
+								_PresentParameters.AutoDepthStencilFormat == GFX_FMT_D24X4S4);*/
 	bool has_stencil=false;
-	IDirect3DSurface8* depthbuffer;
+	GfxSurface* depthbuffer;
 
 	_Get_D3D_Device8()->GetDepthStencilSurface(&depthbuffer);
 	DX8_RECORD_DX8_CALLS();
@@ -1801,9 +1801,9 @@ void DX8Wrapper::Clear(bool clear_color, bool clear_z_stencil, const Vector3 &co
 		depthbuffer->GetDesc(&desc);
 		has_stencil=
 		(
-			desc.Format==D3DFMT_D15S1 ||
-			desc.Format==D3DFMT_D24S8 ||
-			desc.Format==D3DFMT_D24X4S4
+			desc.Format==GFX_FMT_D15S1 ||
+			desc.Format==GFX_FMT_D24S8 ||
+			desc.Format==GFX_FMT_D24X4S4
 		);
 
 		// release ref
@@ -1820,7 +1820,7 @@ void DX8Wrapper::Clear(bool clear_color, bool clear_z_stencil, const Vector3 &co
 	}
 }
 
-void DX8Wrapper::Set_Viewport(CONST D3DVIEWPORT8* pViewport)
+void DX8Wrapper::Set_Viewport(CONST GfxViewport* pViewport)
 {
 	DX8_THREAD_ASSERT();
 	DX8CALL(SetViewport(pViewport));
@@ -2254,7 +2254,7 @@ void DX8Wrapper::Apply_Render_State_Changes()
 				if (render_state.LightEnable[index]) {
 #if defined(DEBUG_CRASHING) || defined(DEBUG_LOGGING)
 					if ( WW3D::Is_Snapshot_Activated() ) {
-						D3DLIGHT8 * light = &(render_state.Lights[index]);
+						GfxLight * light = &(render_state.Lights[index]);
 						static const char * _light_types[] = { "Unknown", "Point","Spot", "Directional" };
 						WWASSERT((light->Type >= 0) && (light->Type <= 3));
 
@@ -2352,7 +2352,7 @@ void DX8Wrapper::Apply_Render_State_Changes()
 	SNAPSHOT_SAY(("DX8Wrapper::Apply_Render_State_Changes() - finished"));
 }
 
-IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
+GfxTexture * DX8Wrapper::_Create_DX8_Texture
 (
 	unsigned int width,
 	unsigned int height,
@@ -2364,10 +2364,10 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 {
 	DX8_THREAD_ASSERT();
 	DX8_Assert();
-	IDirect3DTexture8 *texture = nullptr;
+	GfxTexture *texture = nullptr;
 
 	// Paletted textures not supported!
-	WWASSERT(format!=D3DFMT_P8);
+	WWASSERT(format!=GFX_FMT_P8);
 
 	// NOTE: If 'format' is not supported as a texture format, this function will find the closest
 	// format that is supported and use that instead.
@@ -2380,7 +2380,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 			width,
 			height,
 			mip_level_count,
-			D3DUSAGE_RENDERTARGET,
+			GFX_USAGE_RENDERTARGET,
 			WW3DFormat_To_D3DFormat(format),
 			pool,
 			&texture);
@@ -2404,7 +2404,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 				width,
 				height,
 				mip_level_count,
-				D3DUSAGE_RENDERTARGET,
+				GFX_USAGE_RENDERTARGET,
 				WW3DFormat_To_D3DFormat(format),
 				pool,
 				&texture);
@@ -2473,7 +2473,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 	return texture;
 }
 
-IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
+GfxTexture * DX8Wrapper::_Create_DX8_Texture
 (
 	const char *filename,
 	MipCountType mip_level_count
@@ -2481,7 +2481,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 {
 	DX8_THREAD_ASSERT();
 	DX8_Assert();
-	IDirect3DTexture8 *texture = nullptr;
+	GfxTexture *texture = nullptr;
 
 	// NOTE: If the original image format is not supported as a texture format, it will
 	// automatically be converted to an appropriate format.
@@ -2495,8 +2495,8 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 		D3DX_DEFAULT,
 		mip_level_count,//create_mipmaps ? 0 : 1,
 		0,
-		D3DFMT_UNKNOWN,
-		D3DPOOL_MANAGED,
+		GFX_FMT_UNKNOWN,
+		GFX_POOL_MANAGED,
 		D3DX_FILTER_BOX,
 		D3DX_FILTER_BOX,
 		0,
@@ -2511,22 +2511,22 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 	// Make sure texture wasn't paletted!
 	D3DSURFACE_DESC desc;
 	texture->GetLevelDesc(0,&desc);
-	if (desc.Format==D3DFMT_P8) {
+	if (desc.Format==GFX_FMT_P8) {
 		texture->Release();
 		return MissingTexture::_Get_Missing_Texture();
 	}
 	return texture;
 }
 
-IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
+GfxTexture * DX8Wrapper::_Create_DX8_Texture
 (
-	IDirect3DSurface8 *surface,
+	GfxSurface *surface,
 	MipCountType mip_level_count
 )
 {
 	DX8_THREAD_ASSERT();
 	DX8_Assert();
-	IDirect3DTexture8 *texture = nullptr;
+	GfxTexture *texture = nullptr;
 
 	D3DSURFACE_DESC surface_desc;
 	::ZeroMemory(&surface_desc, sizeof(D3DSURFACE_DESC));
@@ -2538,7 +2538,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 	texture = _Create_DX8_Texture(surface_desc.Width, surface_desc.Height, format, mip_level_count);
 
 	// Copy the surface to the texture
-	IDirect3DSurface8 *tex_surface = nullptr;
+	GfxSurface *tex_surface = nullptr;
 	texture->GetSurfaceLevel(0, &tex_surface);
 	DX8_ErrorCode(D3DXLoadSurfaceFromSurface(tex_surface, nullptr, nullptr, surface, nullptr, nullptr, D3DX_FILTER_BOX, 0));
 	tex_surface->Release();
@@ -2556,7 +2556,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 /*!
  * KJM create depth stencil texture
  */
-IDirect3DTexture8 * DX8Wrapper::_Create_DX8_ZTexture
+GfxTexture * DX8Wrapper::_Create_DX8_ZTexture
 (
 	unsigned int width,
 	unsigned int height,
@@ -2567,7 +2567,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_ZTexture
 {
 	DX8_THREAD_ASSERT();
 	DX8_Assert();
-	IDirect3DTexture8* texture = nullptr;
+	GfxTexture* texture = nullptr;
 
 	D3DFORMAT zfmt=WW3DZFormat_To_D3DFormat(zformat);
 
@@ -2576,7 +2576,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_ZTexture
 		width,
 		height,
 		mip_level_count,
-		D3DUSAGE_DEPTHSTENCIL,
+		GFX_USAGE_DEPTHSTENCIL,
 		zfmt,
 		pool,
 		&texture
@@ -2603,7 +2603,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_ZTexture
 			width,
 			height,
 			mip_level_count,
-			D3DUSAGE_DEPTHSTENCIL,
+			GFX_USAGE_DEPTHSTENCIL,
 			zfmt,
 			pool,
 			&texture
@@ -2653,7 +2653,7 @@ IDirect3DCubeTexture8* DX8Wrapper::_Create_DX8_Cube_Texture
 	IDirect3DCubeTexture8* texture=nullptr;
 
 	// Paletted textures not supported!
-	WWASSERT(format!=D3DFMT_P8);
+	WWASSERT(format!=GFX_FMT_P8);
 
 	// NOTE: If 'format' is not supported as a texture format, this function will find the closest
 	// format that is supported and use that instead.
@@ -2667,7 +2667,7 @@ IDirect3DCubeTexture8* DX8Wrapper::_Create_DX8_Cube_Texture
 			DX8Wrapper::_Get_D3D_Device8(),
 			width,
 			mip_level_count,
-			D3DUSAGE_RENDERTARGET,
+			GFX_USAGE_RENDERTARGET,
 			WW3DFormat_To_D3DFormat(format),
 			pool,
 			&texture
@@ -2694,7 +2694,7 @@ IDirect3DCubeTexture8* DX8Wrapper::_Create_DX8_Cube_Texture
 				DX8Wrapper::_Get_D3D_Device8(),
 				width,
 				mip_level_count,
-				D3DUSAGE_RENDERTARGET,
+				GFX_USAGE_RENDERTARGET,
 				WW3DFormat_To_D3DFormat(format),
 				pool,
 				&texture
@@ -2790,7 +2790,7 @@ IDirect3DVolumeTexture8* DX8Wrapper::_Create_DX8_Volume_Texture
 	IDirect3DVolumeTexture8* texture=nullptr;
 
 	// Paletted textures not supported!
-	WWASSERT(format!=D3DFMT_P8);
+	WWASSERT(format!=GFX_FMT_P8);
 
 	// NOTE: If 'format' is not supported as a texture format, this function will find the closest
 	// format that is supported and use that instead.
@@ -2852,22 +2852,22 @@ IDirect3DVolumeTexture8* DX8Wrapper::_Create_DX8_Volume_Texture
 }
 
 
-IDirect3DSurface8 * DX8Wrapper::_Create_DX8_Surface(unsigned int width, unsigned int height, WW3DFormat format)
+GfxSurface * DX8Wrapper::_Create_DX8_Surface(unsigned int width, unsigned int height, WW3DFormat format)
 {
 	DX8_THREAD_ASSERT();
 	DX8_Assert();
 
-	IDirect3DSurface8 *surface = nullptr;
+	GfxSurface *surface = nullptr;
 
 	// Paletted surfaces not supported!
-	WWASSERT(format!=D3DFMT_P8);
+	WWASSERT(format!=GFX_FMT_P8);
 
 	DX8CALL(CreateImageSurface(width, height, WW3DFormat_To_D3DFormat(format), &surface));
 
 	return surface;
 }
 
-IDirect3DSurface8 * DX8Wrapper::_Create_DX8_Surface(const char *filename_)
+GfxSurface * DX8Wrapper::_Create_DX8_Surface(const char *filename_)
 {
 	DX8_THREAD_ASSERT();
 	DX8_Assert();
@@ -2881,7 +2881,7 @@ IDirect3DSurface8 * DX8Wrapper::_Create_DX8_Surface(const char *filename_)
 	// the file data and use D3DXLoadSurfaceFromFile. This is a horrible hack, but it saves us
 	// having to write file loaders. Will fix this when D3DX provides us with the right functions.
 	// Create a surface the size of the file image data
-	IDirect3DSurface8 *surface = nullptr;
+	GfxSurface *surface = nullptr;
 
 	{
 
@@ -2950,7 +2950,7 @@ void DX8Wrapper::Compute_Caps(WW3DFormat display_format)
 }
 
 
-void DX8Wrapper::Set_Light(unsigned index, const D3DLIGHT8* light)
+void DX8Wrapper::Set_Light(unsigned index, const GfxLight* light)
 {
 	if (light) {
 		render_state.Lights[index]=*light;
@@ -2964,9 +2964,9 @@ void DX8Wrapper::Set_Light(unsigned index, const D3DLIGHT8* light)
 
 void DX8Wrapper::Set_Light(unsigned index,const LightClass &light)
 {
-	D3DLIGHT8 dlight;
+	GfxLight dlight;
 	Vector3 temp;
-	memset(&dlight,0,sizeof(D3DLIGHT8));
+	memset(&dlight,0,sizeof(GfxLight));
 
 	switch (light.Get_Type())
 	{
@@ -3057,11 +3057,11 @@ void DX8Wrapper::Set_Light_Environment(LightEnvironmentClass* light_env)
 #endif
 		}
 
-		D3DLIGHT8 light;
+		GfxLight light;
 		int l=0;
 		for (;l<light_count;++l) {
 
-			::ZeroMemory(&light, sizeof(D3DLIGHT8));
+			::ZeroMemory(&light, sizeof(GfxLight));
 
 			light.Type=D3DLIGHT_DIRECTIONAL;
 			(Vector3&)light.Diffuse=light_env->Get_Light_Diffuse(l);
@@ -3117,16 +3117,16 @@ void DX8Wrapper::Set_Light_Environment(LightEnvironmentClass* light_env)
 */
 }
 
-IDirect3DSurface8 * DX8Wrapper::_Get_DX8_Front_Buffer()
+GfxSurface * DX8Wrapper::_Get_DX8_Front_Buffer()
 {
 	DX8_THREAD_ASSERT();
 	D3DDISPLAYMODE mode;
 
 	DX8CALL(GetDisplayMode(&mode));
 
-	IDirect3DSurface8 * fb=nullptr;
+	GfxSurface * fb=nullptr;
 
-	DX8CALL(CreateImageSurface(mode.Width,mode.Height,D3DFMT_A8R8G8B8,&fb));
+	DX8CALL(CreateImageSurface(mode.Width,mode.Height,GFX_FMT_A8R8G8B8,&fb));
 
 	DX8CALL(GetFrontBuffer(fb));
 	return fb;
@@ -3136,7 +3136,7 @@ SurfaceClass * DX8Wrapper::_Get_DX8_Back_Buffer(unsigned int num)
 {
 	DX8_THREAD_ASSERT();
 
-	IDirect3DSurface8 * bb;
+	GfxSurface * bb;
 	SurfaceClass *surf=nullptr;
 	DX8CALL(GetBackBuffer(num,D3DBACKBUFFER_TYPE_MONO,&bb));
 	if (bb)
@@ -3300,10 +3300,10 @@ void DX8Wrapper::Set_Render_Target_With_Z
 )
 {
 	WWASSERT(texture!=nullptr);
-	IDirect3DSurface8 * d3d_surf = texture->Get_D3D_Surface_Level();
+	GfxSurface * d3d_surf = texture->Get_D3D_Surface_Level();
 	WWASSERT(d3d_surf != nullptr);
 
-	IDirect3DSurface8* d3d_zbuf=nullptr;
+	GfxSurface* d3d_zbuf=nullptr;
 	if (ztexture!=nullptr)
 	{
 
@@ -3330,7 +3330,7 @@ DX8Wrapper::Set_Render_Target(IDirect3DSwapChain8 *swap_chain)
 	//
 	//	Get the back buffer for the swap chain
 	//
-	LPDIRECT3DSURFACE8 render_target = nullptr;
+	GfxSurface* render_target = nullptr;
 	swap_chain->GetBackBuffer (0, D3DBACKBUFFER_TYPE_MONO, &render_target);
 
 	//
@@ -3350,7 +3350,7 @@ DX8Wrapper::Set_Render_Target(IDirect3DSwapChain8 *swap_chain)
 }
 
 void
-DX8Wrapper::Set_Render_Target(IDirect3DSurface8 *render_target, bool use_default_depth_buffer)
+DX8Wrapper::Set_Render_Target(GfxSurface *render_target, bool use_default_depth_buffer)
 {
 	DX8_THREAD_ASSERT();
 	DX8_Assert();
@@ -3406,7 +3406,7 @@ DX8Wrapper::Set_Render_Target(IDirect3DSurface8 *render_target, bool use_default
 		//
 		if (DefaultDepthBuffer == nullptr)
 		{
-//		IDirect3DSurface8 *depth_buffer = nullptr;
+//		GfxSurface *depth_buffer = nullptr;
 			DX8CALL(GetDepthStencilSurface (&DefaultDepthBuffer));
 		}
 
@@ -3474,8 +3474,8 @@ DX8Wrapper::Set_Render_Target(IDirect3DSurface8 *render_target, bool use_default
 */
 void DX8Wrapper::Set_Render_Target
 (
-	IDirect3DSurface8* render_target,
-	IDirect3DSurface8* depth_buffer
+	GfxSurface* render_target,
+	GfxSurface* depth_buffer
 )
 {
 	DX8_THREAD_ASSERT();
@@ -3531,7 +3531,7 @@ void DX8Wrapper::Set_Render_Target
 		//
 		if (DefaultDepthBuffer == nullptr)
 		{
-//		IDirect3DSurface8 *depth_buffer = nullptr;
+//		GfxSurface *depth_buffer = nullptr;
 			DX8CALL(GetDepthStencilSurface (&DefaultDepthBuffer));
 		}
 

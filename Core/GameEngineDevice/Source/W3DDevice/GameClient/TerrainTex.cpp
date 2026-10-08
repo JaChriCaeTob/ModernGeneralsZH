@@ -97,7 +97,7 @@ int TerrainTextureClass::update(WorldHeightMap *htMap)
 {
 	// D3DTexture is our texture;
 
-	IDirect3DSurface8 *surface_level;
+	GfxSurface *surface_level;
 	D3DSURFACE_DESC surface_desc;
 	D3DLOCKED_RECT locked_rect;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0, &surface_level));
@@ -117,7 +117,7 @@ int TerrainTextureClass::update(WorldHeightMap *htMap)
 	//DEBUG_ASSERTCRASH(tilesPerRow*numRows >= htMap->m_numBitmapTiles, ("Too many tiles."));
 	DEBUG_ASSERTCRASH((Int)surface_desc.Width >= tilePixelExtent*tilesPerRow, ("Bitmap too small."));
 #endif
-	if (surface_desc.Format == D3DFMT_A1R5G5B5) {
+	if (surface_desc.Format == GFX_FMT_A1R5G5B5) {
 #if 0
 		UnsignedInt cellX, cellY;
 		for (cellX = 0; cellX < surface_desc.Width; cellX++) {
@@ -214,7 +214,7 @@ int TerrainTextureClass::update(WorldHeightMap *htMap)
 {
 	// D3DTexture is our texture;
 
-	IDirect3DSurface8 *surface_level;
+	GfxSurface *surface_level;
 	D3DSURFACE_DESC surface_desc;
 	D3DLOCKED_RECT locked_rect;
 	DX8_ErrorCode(D3DTexture->GetSurfaceLevel(0, &surface_level));
@@ -237,7 +237,7 @@ int TerrainTextureClass::update(WorldHeightMap *htMap)
 	assert(tilesPerRow*numRows >= htMap->m_numBitmapTiles);
 	assert((Int)surface_desc.Width >= tilePixelExtent*tilesPerRow);
 #endif
-	if (surface_desc.Format == D3DFMT_A1R5G5B5) {
+	if (surface_desc.Format == GFX_FMT_A1R5G5B5) {
 		Int cellX, cellY;
 #if 0
 		for (cellX = 0; cellX < surface_desc.Width; cellX++) {
@@ -377,7 +377,7 @@ Bool TerrainTextureClass::updateFlat(WorldHeightMap *htMap, Int xCell, Int yCell
 {
 	// D3DTexture is our texture;
 
-	IDirect3DSurface8 *surface_level;
+	GfxSurface *surface_level;
 	D3DSURFACE_DESC surface_desc;
 	D3DLOCKED_RECT locked_rect;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0, &surface_level));
@@ -391,7 +391,7 @@ Bool TerrainTextureClass::updateFlat(WorldHeightMap *htMap, Int xCell, Int yCell
 	DX8_ErrorCode(surface_level->LockRect(&locked_rect, nullptr, 0));
 
 
-	if (surface_desc.Format == D3DFMT_A1R5G5B5) {
+	if (surface_desc.Format == GFX_FMT_A1R5G5B5) {
 
 		Int pixelBytes = 2;
 		Int cellX, cellY;
@@ -490,7 +490,7 @@ AlphaTerrainTextureClass::AlphaTerrainTextureClass( TextureClass *pBaseTex ):
 		WW3D_FORMAT_A1R5G5B5, MIP_LEVELS_1 )
 {
 	// Attach the base texture's d3d texture.
-	IDirect3DTexture8 * d3d_tex = pBaseTex->Peek_D3D_Texture();
+	GfxTexture * d3d_tex = pBaseTex->Peek_D3D_Texture();
 	Set_D3D_Base_Texture(d3d_tex);
 }
 
@@ -771,7 +771,7 @@ int AlphaEdgeTextureClass::update(WorldHeightMap *htMap)
 {
 	// D3DTexture is our texture;
 
-	IDirect3DSurface8 *surface_level;
+	GfxSurface *surface_level;
 	D3DSURFACE_DESC surface_desc;
 	D3DLOCKED_RECT locked_rect;
 	DX8_ErrorCode(Peek_D3D_Texture()->GetSurfaceLevel(0, &surface_level));
@@ -783,7 +783,7 @@ int AlphaEdgeTextureClass::update(WorldHeightMap *htMap)
 
 //	Int numRows = surface_desc.Height/(tilePixelExtent+8);
 
-	if (surface_desc.Format == D3DFMT_A8R8G8B8) {
+	if (surface_desc.Format == GFX_FMT_A8R8G8B8) {
 #if 1
 #if 1
 		Int cellX, cellY;
