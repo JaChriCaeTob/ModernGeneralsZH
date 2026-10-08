@@ -52,6 +52,7 @@
 
 #include "dx8wrapper.h"
 #include "gfx_null.h"
+#include "gfx_vulkan.h"
 #include "dx8webbrowser.h"
 #include "dx8fvf.h"
 #include "dx8vertexbuffer.h"
@@ -297,6 +298,11 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 		{
 			// GENERALS_GFX=null: run against the in-memory null backend instead of a Direct3D 8 library
 			Direct3DCreate8Ptr = NullGfx_Direct3DCreate8;
+		}
+		else if (VkGfx_Requested())
+		{
+			// GENERALS_GFX=vulkan: the experimental native Vulkan backend
+			Direct3DCreate8Ptr = VkGfx_Direct3DCreate8;
 		}
 		else
 		{

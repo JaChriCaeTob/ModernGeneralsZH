@@ -67,6 +67,10 @@ set(WW3D2_SRC
     dx8webbrowser.h
     dx8wrapper.cpp
     gfx_null.cpp
+    gfx_vulkan.cpp
+    gfx_vulkan.h
+    gfx_vk_shaders.h
+    gfx_mem.h
     gfx_null.h
     gfx_null_stubs.inl
     gfx_d3d8_map.h

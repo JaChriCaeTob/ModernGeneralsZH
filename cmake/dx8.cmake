@@ -51,6 +51,18 @@ else()
     target_compile_definitions(d3d8lib INTERFACE BUILD_WITH_D3D8)
     target_link_directories(d3d8lib BEFORE INTERFACE ${_d3d8_libdir})
     target_link_libraries(d3d8lib INTERFACE d3d8 dinput8 dxguid deps_d3dx8compat legacy_stdio_definitions)
+
+    # Headers of the experimental native Vulkan backend (src gfx_vulkan.cpp). Header-only: the loader (vulkan-1.dll) is
+    # opened at run time, and the backend is only used when the environment variable GENERALS_GFX=vulkan is set.
+    FetchContent_Declare(
+        vulkan_headers
+        GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+        GIT_TAG        v1.3.296
+        SOURCE_SUBDIR  headers-only-do-not-add
+    )
+    FetchContent_MakeAvailable(vulkan_headers)
+    target_include_directories(d3d8lib INTERFACE ${vulkan_headers_SOURCE_DIR}/include)
+    target_compile_definitions(d3d8lib INTERFACE VK_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR)
     if(CMAKE_SIZEOF_VOID_P EQUAL 4)
         target_link_options(d3d8lib INTERFACE /NODEFAULTLIB:libci.lib /SAFESEH:NO)
     endif()
