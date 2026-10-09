@@ -33,6 +33,8 @@ namespace
 
 // ---- log ------------------------------------------------------------------------------------------------------------------
 
+static VkGfx_Settings g_cfg;
+
 void Log(const char* fmt, ...)
 {
 	static FILE* f = nullptr;
@@ -1336,8 +1338,11 @@ public:
 	{
 		for (int i = 0; i < 512; ++i) { memset(m_matrix[i], 0, sizeof(m_matrix[i])); m_matrix[i][0] = m_matrix[i][5] = m_matrix[i][10] = m_matrix[i][15] = 1.0f; }
 		m_renderStates[D3DRS_COLORWRITEENABLE] = 0xF;
+		g_sh.on = g_cfg.softShadows; B.postOn = g_cfg.postProcessing; g_postCfg.fxaa = g_cfg.fxaa;
+		if (!g_cfg.bloom) g_postCfg.bloomIntensity = 0.0f;
+		if (!g_cfg.ambientOcclusion) g_postCfg.aoStrength = 0.0f;
 		{ const char* e = getenv("GENERALS_SHADOWS"); if (e && e[0] == '0') g_sh.on = false; }
-		{ const char* e = getenv("GENERALS_POST"); B.postOn = !(e && e[0] == '0'); }
+		{ const char* e = getenv("GENERALS_POST"); if (e) B.postOn = e[0] != '0'; }
 		{ const char* e = getenv("GENERALS_BLOOM"); if (e) g_postCfg.bloomIntensity = (float)atof(e); e = getenv("GENERALS_FXAA"); if (e && e[0] == '0') g_postCfg.fxaa = false; e = getenv("GENERALS_AO"); if (e) g_postCfg.aoStrength = (float)atof(e); }
 		HWND w = pp.hDeviceWindow ? pp.hDeviceWindow : focus;
 		if (!B.ready)
@@ -1884,11 +1889,26 @@ public:
 
 } // namespace
 
+void VkGfx_Configure(const VkGfx_Settings& s) { g_cfg = s; }
+
 bool VkGfx_Requested()
 {
 	char value[32] = {};
 	DWORD n = GetEnvironmentVariableA("GENERALS_GFX", value, sizeof(value));
-	return n > 0 && n < sizeof(value) && _stricmp(value, "vulkan") == 0;
+	if (n > 0 && n < sizeof(value))
+		return _stricmp(value, "vulkan") == 0;		// explicit choice from the environment
+	if (g_cfg.classic)
+		return false;
+	// the enhanced renderer needs a Vulkan 1.3 capable driver; without one the classic path is used
+	HMODULE lib = LoadLibraryA("vulkan-1.dll");
+	if (!lib)
+		return false;
+	typedef VkResult (VKAPI_PTR *PFN_ver)(uint32_t*);
+	PFN_ver ver = (PFN_ver)GetProcAddress(lib, "vkEnumerateInstanceVersion");
+	uint32_t v = 0;
+	const bool ok = ver && ver(&v) == VK_SUCCESS && v >= VK_MAKE_API_VERSION(0, 1, 3, 0);
+	FreeLibrary(lib);
+	return ok;
 }
 
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT)
@@ -1908,6 +1928,7 @@ void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ)
 		srand((unsigned)GetTickCount() ^ (unsigned)GetCurrentProcessId() * 2654435761u);
 		float az = (float)(rand() % 3600) * 0.1f * 3.14159265f / 180.0f, el = (35.0f + (float)(rand() % 270) * 0.1f) * 3.14159265f / 180.0f;
 		(void)sunX; (void)sunY;
+		if (g_cfg.sunAzimuth >= 0.0f) { az = g_cfg.sunAzimuth * 3.14159265f / 180.0f; if (g_cfg.sunElevation >= 0.0f) el = g_cfg.sunElevation * 3.14159265f / 180.0f; }
 		if (const char* e = getenv("GENERALS_SUN")) { float a = 0, b = 0; if (sscanf(e, "%f,%f", &a, &b) == 2) { az = a * 3.14159265f / 180.0f; el = b * 3.14159265f / 180.0f; } }
 		g_sh.sun[0] = cosf(el) * cosf(az); g_sh.sun[1] = cosf(el) * sinf(az); g_sh.sun[2] = sinf(el);
 		g_sh.haveSun = true;
@@ -1929,6 +1950,7 @@ void VkGfx_EndScene3D()
 
 #else	// no Vulkan headers in this configuration
 
+void VkGfx_Configure(const VkGfx_Settings&) {}
 bool VkGfx_Requested() { return false; }
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT) { return nullptr; }
 void VkGfx_BeginScene3D(float, float, float) {}

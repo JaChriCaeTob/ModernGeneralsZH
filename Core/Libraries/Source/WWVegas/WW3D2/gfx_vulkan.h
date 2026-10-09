@@ -4,6 +4,15 @@
 
 #include "gfx_d3d8_map.h"
 
+// Settings from Options.ini, set by the engine before the renderer starts. Environment variables (GENERALS_GFX, GENERALS_POST, GENERALS_SHADOWS, ...) still override them.
+struct VkGfx_Settings
+{
+	bool classic = false;			// GraphicsMode = classic: original rendering through Direct3D 8 / DXVK
+	bool postProcessing = true;		// bloom, colour grading, ambient occlusion
+	bool bloom = true, ambientOcclusion = true, fxaa = true, softShadows = true;
+	float sunAzimuth = -1.0f, sunElevation = -1.0f;		// degrees; negative = random for every launch
+};
+void VkGfx_Configure(const VkGfx_Settings& s);
 bool VkGfx_Requested();
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT sdkVersion);
 void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ);

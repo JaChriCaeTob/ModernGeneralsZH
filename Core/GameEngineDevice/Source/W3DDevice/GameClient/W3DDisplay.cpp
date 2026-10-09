@@ -36,6 +36,7 @@ static void drawFramerateBar();
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include <numeric>
 #include "WW3D2/gfx_vulkan.h"
+#include "Common/OptionPreferences.h"
 #include <stdlib.h>
 #include <windows.h>
 #include <io.h>
@@ -819,6 +820,22 @@ void W3DDisplay::init()
 		if (TheGlobalData->m_incrementalAGPBuf)
 		{
 			SortingRendererClass::SetMinVertexBufferSize(1);
+		}
+		{
+			// graphics settings of the native Vulkan renderer (Options.ini), applied before the renderer starts
+			OptionPreferences prefs;
+			auto flag = [&](const char* key, bool def) { auto it = prefs.find(key); return it == prefs.end() ? def : stricmp(it->second.str(), "no") != 0; };
+			auto number = [&](const char* key, float def) { auto it = prefs.find(key); return it == prefs.end() ? def : (float)atof(it->second.str()); };
+			VkGfx_Settings gs;
+			{ auto it = prefs.find("GraphicsMode"); gs.classic = it != prefs.end() && stricmp(it->second.str(), "classic") == 0; }
+			gs.postProcessing = flag("PostProcessing", true);
+			gs.bloom = flag("Bloom", true);
+			gs.ambientOcclusion = flag("AmbientOcclusion", true);
+			gs.fxaa = flag("AntiAliasingFXAA", true);
+			gs.softShadows = flag("SoftShadows", true);
+			gs.sunAzimuth = number("SunAzimuth", -1.0f);
+			gs.sunElevation = number("SunElevation", -1.0f);
+			VkGfx_Configure(gs);
 		}
 		if (WW3D::Init( ApplicationHWnd ) != WW3D_ERROR_OK)
 			throw ERROR_INVALID_D3D;	//failed to initialize.  User probably doesn't have DX 8.1
