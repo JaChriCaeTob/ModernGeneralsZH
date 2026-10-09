@@ -98,7 +98,7 @@ HRESULT NullGfx_FillCaps(UINT adapter, D3DCAPS8* c)
 	c->MaxAnisotropy = 16; c->MaxVertexW = 1e10f;
 	c->GuardBandLeft = -8192.f; c->GuardBandTop = -8192.f; c->GuardBandRight = 8192.f; c->GuardBandBottom = 8192.f;
 	c->ExtentsAdjust = 0; c->StencilCaps = 0xFFFFFFFFu; c->FVFCaps = 8 | D3DFVFCAPS_DONOTSTRIPELEMENTS; c->TextureOpCaps = 0xFFFFFFFFu;
-	c->MaxTextureBlendStages = 8; c->MaxSimultaneousTextures = 8;
+	c->MaxPointSize = 64.0f; c->MaxTextureBlendStages = 8; c->MaxSimultaneousTextures = 8;
 	c->VertexProcessingCaps = 0xFFFFFFFFu; c->MaxActiveLights = 8; c->MaxUserClipPlanes = 6; c->MaxVertexBlendMatrices = 4;
 	c->MaxStreams = 16; c->MaxStreamStride = 255;
 	if (g_nullGfxAdvertiseShaders)
