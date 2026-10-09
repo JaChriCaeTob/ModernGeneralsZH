@@ -10,6 +10,12 @@ $dir = Join-Path $root "Core\Libraries\Source\WWVegas\WW3D2"
 $shaders = @(
     @{ Source = "Shaders\gfx_fixed.vert"; Name = "g_gfxFixedVert" },
     @{ Source = "Shaders\gfx_fixed.frag"; Name = "g_gfxFixedFrag" },
+    @{ Source = "Shaders\gfx_post.vert"; Name = "g_gfxPostVert" },
+    @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostBloomDown0Frag"; Define = "PASS_BLOOM_DOWN0" },
+    @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostBloomDownFrag"; Define = "PASS_BLOOM_DOWN" },
+    @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostBloomUpFrag"; Define = "PASS_BLOOM_UP" },
+    @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostCompositeFrag"; Define = "PASS_COMPOSITE" },
+    @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostFxaaFrag"; Define = "PASS_FXAA" },
     @{ Source = "Shaders\gfx_water.frag"; Name = "g_gfxWaterRiverFrag"; Define = "RIVER" },
     @{ Source = "Shaders\gfx_water.frag"; Name = "g_gfxWaterTrapezoidFrag"; Define = "TRAPEZOID" }
 )

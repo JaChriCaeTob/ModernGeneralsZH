@@ -68,7 +68,7 @@ void Log(const char* fmt, ...)
 	X(vkCreateDescriptorSetLayout) X(vkDestroyDescriptorSetLayout) X(vkCreatePipelineLayout) X(vkDestroyPipelineLayout) \
 	X(vkCreateShaderModule) X(vkDestroyShaderModule) X(vkCreateGraphicsPipelines) X(vkDestroyPipeline) X(vkCmdBeginRendering) \
 	X(vkCmdEndRendering) X(vkCmdBindPipeline) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdBindVertexBuffers) \
-	X(vkCmdBindIndexBuffer) X(vkCmdDrawIndexed) X(vkCmdDraw) X(vkCmdPipelineBarrier2) X(vkCmdCopyBufferToImage) X(vkCmdCopyImageToBuffer) X(vkCmdCopyImage) \
+	X(vkCmdBindIndexBuffer) X(vkCmdDrawIndexed) X(vkCmdDraw) X(vkCmdPipelineBarrier2) X(vkCmdCopyBufferToImage) X(vkCmdCopyImageToBuffer) X(vkCmdBlitImage) X(vkCmdCopyImage) \
 	X(vkCmdClearAttachments) X(vkCmdSetStencilReference)
 
 #define VKFN_DECLARE(n) PFN_##n n = nullptr;
@@ -116,6 +116,7 @@ struct PipeKey
 	uint32_t blendEnable = 0, srcBlend = 0, dstBlend = 0, blendOp = 0;
 	uint32_t depthTest = 0, depthWrite = 0, depthFunc = 0;
 	uint32_t cull = 0, colorMask = 0, pretransformed = 0;
+	uint32_t hdr = 0;		// 1 when drawing into the HDR scene image instead of an image of the swapchain format
 	uint32_t ps = 0;		// 0 fixed function, 1 updated river water, 2 updated sea water
 	uint32_t stencilEnable = 0, stencilFunc = 0, stencilFail = 0, stencilZFail = 0, stencilPass = 0, stencilMask = 0, stencilWriteMask = 0;
 	bool operator<(const PipeKey& o) const { return memcmp(this, &o, sizeof(*this)) < 0; }
@@ -182,6 +183,14 @@ struct Backend
 	bool targetUnsupported = false;					// the device target is a surface we cannot draw to: draws are skipped
 	VkExtent2D passExtent{};
 	GpuTexture* offDepth = nullptr;					// depth/stencil shared by all off-screen passes
+	// HDR scene and post processing (gfx_vk_post.inl)
+	GpuTexture* hdr = nullptr; GpuTexture* ldr = nullptr; GpuTexture* bloom[5] = {};
+	VkShaderModule postVs = VK_NULL_HANDLE, postFs[8] = {};
+	std::map<uint64_t, VkPipeline> postPipes;
+	bool postOn = true;								// false: draw straight to the swapchain
+	int stage = 0;									// 0: 3D scene into the HDR image, 1: interface onto the swapchain
+	bool scene3D = false;							// a 3D draw happened in this frame
+	bool depthLoaded = false;						// the depth buffer already holds this frame's scene
 	bool colorLoaded = false;						// the frame already has content in the swapchain image (resume with load, not clear)
 	bool semaphoreUsed = false;						// imageAvailable was already waited on by an earlier submit of this frame
 	VkBuffer readBuf = VK_NULL_HANDLE;				// host visible destination of back buffer read backs
@@ -356,6 +365,12 @@ void BeginCommandBuffer()
 	B.cmdOpen = true;
 }
 
+bool CreatePostTargets();
+void DestroyPostTargets();
+bool AcquireSwap();
+bool RunPostProcess();
+bool CreatePostShaders();
+
 // ---- swapchain ------------------------------------------------------------------------------------------------------------
 
 void DestroySwapchain()
@@ -363,6 +378,7 @@ void DestroySwapchain()
 	if (B.device == VK_NULL_HANDLE)
 		return;
 	vkDeviceWaitIdle(B.device);
+	DestroyPostTargets();
 	for (VkSemaphore s : B.renderDone) vkDestroySemaphore(B.device, s, nullptr);
 	B.renderDone.clear();
 	for (VkImageView v : B.swapViews) vkDestroyImageView(B.device, v, nullptr);
@@ -445,6 +461,8 @@ bool CreateSwapchain()
 	dv.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1 };
 	VKCHECK(vkCreateImageView(B.device, &dv, nullptr, &B.depthView));
 	Log("swapchain %ux%u, %u images, format %d, present mode %d", ext.width, ext.height, n, (int)B.swapFormat, (int)mode);
+	if (B.postOn)
+		CreatePostTargets();
 	return true;
 }
 
@@ -804,7 +822,7 @@ VkPipeline GetPipeline(const PipeKey& key)
 	VkPipelineShaderStageCreateInfo stages[2] = { { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO }, { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO } };
 	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT; stages[0].module = B.vs; stages[0].pName = "main";
 	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = key.ps ? B.fsWater[key.ps - 1] : B.fs; stages[1].pName = "main";
-	VkFormat colorFormat = B.swapFormat;
+	VkFormat colorFormat = key.hdr ? VK_FORMAT_R16G16B16A16_SFLOAT : B.swapFormat;
 	VkPipelineRenderingCreateInfo ri{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 	ri.colorAttachmentCount = 1; ri.pColorAttachmentFormats = &colorFormat; ri.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; ri.stencilAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
 	VkGraphicsPipelineCreateInfo pi{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
@@ -925,6 +943,7 @@ bool CreateInstanceAndDevice(HWND window)
 	VKCHECK(vkCreateShaderModule(B.device, &smi, nullptr, &B.fsWater[0]));
 	smi.codeSize = sizeof(g_gfxWaterTrapezoidFrag); smi.pCode = g_gfxWaterTrapezoidFrag;
 	VKCHECK(vkCreateShaderModule(B.device, &smi, nullptr, &B.fsWater[1]));
+	CreatePostShaders();
 
 	// per frame ring buffer and the constant default vertex attributes
 	B.ringSize = 64ull * 1024 * 1024;
@@ -973,7 +992,10 @@ void EndPass()
 		B.passTarget->loaded = true;
 	}
 	else
+	{
 		B.colorLoaded = true;
+		B.depthLoaded = true;
+	}
 }
 
 bool EnsureOffscreenDepth(uint32_t w, uint32_t h)
@@ -1035,45 +1057,48 @@ bool EnsureRendering()
 		B.rendering = true; B.passTarget = rt; B.passExtent = { rt->width, rt->height };
 		return true;
 	}
-	if (!B.acquired)
-	{
-		for (int attempt = 0; attempt < 3; ++attempt)
-		{
-			if (B.swapchain == VK_NULL_HANDLE && !CreateSwapchain())
-				return false;
-			VkResult r = vkAcquireNextImageKHR(B.device, B.swapchain, UINT64_MAX, B.imageAvailable, VK_NULL_HANDLE, &B.imageIndex);
-			if (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR) { B.acquired = true; break; }
-			if (r == VK_ERROR_OUT_OF_DATE_KHR) { DestroySwapchain(); continue; }
-			Log("vkAcquireNextImageKHR failed: %d", (int)r);
-			return false;
-		}
-		if (!B.acquired)
-			return false;
-	}
+	const bool hdrStage = B.postOn && B.stage == 0 && B.hdr;
+	if (!hdrStage && !AcquireSwap())
+		return false;
 	const VkAttachmentLoadOp loadOp = B.colorLoaded ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
+	const VkAttachmentLoadOp depthLoadOp = B.depthLoaded ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
 	const VkImageLayout colorOld = B.colorLoaded ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
-	const VkImageLayout depthOld = B.colorLoaded ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
-	ImageBarrier(B.cmd, B.swapImages[B.imageIndex], colorOld, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, B.colorLoaded ? VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT : 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT);
+	const VkImageLayout depthOld = B.depthLoaded ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+	VkImage colorImage = hdrStage ? B.hdr->image : B.swapImages[B.imageIndex];
+	VkImageView colorView = hdrStage ? B.hdr->view : B.swapViews[B.imageIndex];
+	ImageBarrier(B.cmd, colorImage, colorOld, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, B.colorLoaded ? VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT : 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT);
+	if (hdrStage)
+		B.hdr->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	ImageBarrier(B.cmd, B.depthImage, depthOld, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
-		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, B.colorLoaded ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, B.depthLoaded ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0,
 		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
 	VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	color.imageView = B.swapViews[B.imageIndex]; color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	color.imageView = colorView; color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	color.loadOp = loadOp; color.storeOp = VK_ATTACHMENT_STORE_OP_STORE; color.clearValue.color = { { 0.f, 0.f, 0.f, 1.f } };
 	VkRenderingAttachmentInfo depth{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
 	depth.imageView = B.depthView; depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	depth.loadOp = loadOp; depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE; depth.clearValue.depthStencil = { 1.0f, 0 };
+	depth.loadOp = depthLoadOp; depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE; depth.clearValue.depthStencil = { 1.0f, 0 };
 	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	ri.renderArea = { { 0, 0 }, B.extent }; ri.layerCount = 1; ri.colorAttachmentCount = 1; ri.pColorAttachments = &color; ri.pDepthAttachment = &depth; ri.pStencilAttachment = &depth;
+	{ static int n = 0; if (B.colorLoaded && n++ < 20) Log("resume backbuffer pass: hdr %d colorLoaded %d depthLoaded %d stage %d", (int)hdrStage, (int)B.colorLoaded, (int)B.depthLoaded, B.stage); }
 	vkCmdBeginRendering(B.cmd, &ri);
 	B.rendering = true; B.passTarget = nullptr; B.passExtent = B.extent;
 	return true;
 }
 
+uint32_t g_cnt[16] = {};
+struct PostCfg
+{
+	float bloomThreshold = 0.78f, bloomKnee = 0.30f, bloomIntensity = 0.30f, saturation = 1.06f, contrast = 1.04f;
+	bool fxaa = true;
+} g_postCfg;
+
+#include "gfx_vk_post.inl"
+
 uint32_t g_frame = 0;
 int g_frameDrawLog = 0;
-uint32_t g_cnt[16] = {};
+
 std::vector<std::string> g_drawTrace;		// description of every draw of the sampled frame			// drawn, offscreen, pixel shader, vertex shader, stencil, ring full, other
 
 void PresentFrame()
@@ -1104,19 +1129,20 @@ void PresentFrame()
 	if (g_frame % 4000 == 0)
 		Log("frame %u: drawn %u, skipped: offscreen %u, pixel shader %u, vertex shader %u, stencil %u, ring full %u | calls: DrawPrimitive %u DrawIndexed %u UP %u IndexedUP %u | no vb %u no ib %u, no vertices %u, no rendering %u", g_frame, g_cnt[0], g_cnt[1], g_cnt[2], g_cnt[3], g_cnt[4], g_cnt[5], g_cnt[6], g_cnt[7], g_cnt[10], g_cnt[11], g_cnt[8], g_cnt[9], g_cnt[12], g_cnt[13]);
 	memset(g_cnt, 0, sizeof(g_cnt));
-	if (!EnsureRendering())
+	const bool ready = (B.postOn && B.stage == 0 && B.hdr) ? RunPostProcess() : EnsureRendering();
+	if (!ready)
 	{
 		// minimised or the swapchain could not be made: just drop the frame's recorded work (uploads still have to happen)
+		EndPass();
 		FlushUploadsSync();
-		B.colorLoaded = false; B.semaphoreUsed = false;
+		B.colorLoaded = false; B.depthLoaded = false; B.semaphoreUsed = false; B.stage = 0; B.scene3D = false;
 		vkEndCommandBuffer(B.cmd);
 		vkResetCommandBuffer(B.cmd, 0);
 		BeginCommandBuffer();
 		B.ringCursor = 0;
 		return;
 	}
-	vkCmdEndRendering(B.cmd);
-	B.rendering = false;
+	EndPass();
 	ImageBarrier(B.cmd, B.swapImages[B.imageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, 0);
 	VKCHECK(vkEndCommandBuffer(B.cmd));
@@ -1131,14 +1157,14 @@ void PresentFrame()
 	}
 	VkCommandBuffer submitted[2] = { B.uploadCmd, B.cmd };
 	VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
-	si.waitSemaphoreCount = B.semaphoreUsed ? 0 : 1; si.pWaitSemaphores = &B.imageAvailable; si.pWaitDstStageMask = &wait;
+	si.waitSemaphoreCount = (B.acquired && !B.semaphoreUsed) ? 1 : 0; si.pWaitSemaphores = &B.imageAvailable; si.pWaitDstStageMask = &wait;
 	si.commandBufferCount = hasUploads ? 2 : 1; si.pCommandBuffers = hasUploads ? submitted : &B.cmd;
 	si.signalSemaphoreCount = 1; si.pSignalSemaphores = &B.renderDone[B.imageIndex];
 	VKCHECK(vkQueueSubmit(B.queue, 1, &si, B.frameFence));
 	VkPresentInfoKHR pi{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
 	pi.waitSemaphoreCount = 1; pi.pWaitSemaphores = &B.renderDone[B.imageIndex]; pi.swapchainCount = 1; pi.pSwapchains = &B.swapchain; pi.pImageIndices = &B.imageIndex;
 	VkResult pr = vkQueuePresentKHR(B.queue, &pi);
-	B.acquired = false; B.colorLoaded = false; B.semaphoreUsed = false;
+	B.acquired = false; B.colorLoaded = false; B.depthLoaded = false; B.semaphoreUsed = false; B.stage = 0; B.scene3D = false;
 
 	vkWaitForFences(B.device, 1, &B.frameFence, VK_TRUE, UINT64_MAX);
 	vkResetFences(B.device, 1, &B.frameFence);
@@ -1177,16 +1203,35 @@ bool ReadBackBuffer(NullSurface* dst, RECT r)
 			return false;
 		B.readSize = need;
 	}
+	const bool fromHdr = B.postOn && B.stage == 0 && B.hdr;
 	EndPass();
-	VkImage img = B.swapImages[B.imageIndex];
-	ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+	VkImage img = fromHdr ? B.ldr->image : B.swapImages[B.imageIndex];
+	if (fromHdr)
+	{
+		// the HDR scene is converted to the swapchain format first
+		ImageBarrier(B.cmd, B.hdr->image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+		ImageBarrier(B.cmd, B.ldr->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+		VkImageBlit bl{};
+		bl.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }; bl.dstSubresource = bl.srcSubresource;
+		bl.srcOffsets[1] = { (int32_t)B.extent.width, (int32_t)B.extent.height, 1 }; bl.dstOffsets[1] = bl.srcOffsets[1];
+		vkCmdBlitImage(B.cmd, B.hdr->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, B.ldr->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bl, VK_FILTER_NEAREST);
+		ImageBarrier(B.cmd, B.hdr->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+		ImageBarrier(B.cmd, B.ldr->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+	}
+	else
+		ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
 	VkBufferImageCopy bic{};
 	bic.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
 	bic.imageOffset = { (int32_t)r.left, (int32_t)r.top, 0 }; bic.imageExtent = { w, h, 1 };
 	vkCmdCopyImageToBuffer(B.cmd, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, B.readBuf, 1, &bic);
-	ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+	if (!fromHdr)
+		ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
 	VKCHECK(vkEndCommandBuffer(B.cmd));
 	B.cmdOpen = false;
 
@@ -1199,10 +1244,12 @@ bool ReadBackBuffer(NullSurface* dst, RECT r)
 	}
 	VkCommandBuffer submitted[2] = { B.uploadCmd, B.cmd };
 	VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
-	si.waitSemaphoreCount = B.semaphoreUsed ? 0 : 1; si.pWaitSemaphores = &B.imageAvailable; si.pWaitDstStageMask = &wait;
+	const bool waits = B.acquired && !B.semaphoreUsed;
+	si.waitSemaphoreCount = waits ? 1 : 0; si.pWaitSemaphores = &B.imageAvailable; si.pWaitDstStageMask = &wait;
 	si.commandBufferCount = hasUploads ? 2 : 1; si.pCommandBuffers = hasUploads ? submitted : &B.cmd;
 	VKCHECK(vkQueueSubmit(B.queue, 1, &si, B.frameFence));
-	B.semaphoreUsed = true; B.colorLoaded = true;
+	if (waits) B.semaphoreUsed = true;
+	B.colorLoaded = true; B.depthLoaded = true;
 	vkWaitForFences(B.device, 1, &B.frameFence, VK_TRUE, UINT64_MAX);
 	vkResetFences(B.device, 1, &B.frameFence);
 	vkResetCommandBuffer(B.cmd, 0);
@@ -1218,20 +1265,34 @@ bool ReadBackBuffer(NullSurface* dst, RECT r)
 // GPU side copy of the whole back buffer into a render target texture (used by the water shaders to refract the scene).
 bool CopyBackBufferToTexture(GpuTexture* g)
 {
+	static const bool noBlit = getenv("GENERALS_NOBLIT") != nullptr;
+	if (noBlit) return true;
 	struct RestoreTarget { GpuTexture* t; ~RestoreTarget() { B.curTarget = t; } } restoreTarget{ B.curTarget };
 	B.curTarget = nullptr;
 	if (!EnsureRendering())
 		return false;
 	EndPass();
-	VkImage src = B.swapImages[B.imageIndex];
+	const bool fromHdr = B.postOn && B.stage == 0 && B.hdr;
+	VkImage src = fromHdr ? B.hdr->image : B.swapImages[B.imageIndex];
 	ImageBarrier(B.cmd, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
 	ImageBarrier(B.cmd, g->image, g->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
-	VkImageCopy ic{};
-	ic.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }; ic.dstSubresource = ic.srcSubresource;
-	ic.extent = { std::min(B.extent.width, g->width), std::min(B.extent.height, g->height), 1 };
-	vkCmdCopyImage(B.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ic);
+	if (fromHdr)
+	{
+		VkImageBlit bl{};
+		bl.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }; bl.dstSubresource = bl.srcSubresource;
+		const int32_t cw = (int32_t)std::min(B.extent.width, g->width), ch = (int32_t)std::min(B.extent.height, g->height);
+		bl.srcOffsets[1] = { cw, ch, 1 }; bl.dstOffsets[1] = { cw, ch, 1 };
+		vkCmdBlitImage(B.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bl, VK_FILTER_NEAREST);
+	}
+	else
+	{
+		VkImageCopy ic{};
+		ic.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }; ic.dstSubresource = ic.srcSubresource;
+		ic.extent = { std::min(B.extent.width, g->width), std::min(B.extent.height, g->height), 1 };
+		vkCmdCopyImage(B.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ic);
+	}
 	ImageBarrier(B.cmd, g->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT);
 	ImageBarrier(B.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
@@ -1259,6 +1320,8 @@ public:
 	{
 		for (int i = 0; i < 512; ++i) { memset(m_matrix[i], 0, sizeof(m_matrix[i])); m_matrix[i][0] = m_matrix[i][5] = m_matrix[i][10] = m_matrix[i][15] = 1.0f; }
 		m_renderStates[D3DRS_COLORWRITEENABLE] = 0xF;
+		{ const char* e = getenv("GENERALS_POST"); if (e && e[0] == '0') B.postOn = false; }
+		{ const char* e = getenv("GENERALS_BLOOM"); if (e) g_postCfg.bloomIntensity = (float)atof(e); e = getenv("GENERALS_FXAA"); if (e && e[0] == '0') g_postCfg.fxaa = false; }
 		HWND w = pp.hDeviceWindow ? pp.hDeviceWindow : focus;
 		if (!B.ready)
 		{
@@ -1515,14 +1578,19 @@ private:
 		if (!B.ready || numVertices == 0) { ++g_cnt[12]; return D3D_OK; }
 		if (B.targetUnsupported) { ++g_cnt[1]; Note("skipped, render target cannot be drawn to", m_vertexShader); return D3D_OK; }
 		const int waterKind = PixelShaderKind(m_pixelShader);
+		static const bool noWater = getenv("GENERALS_NOWATER") != nullptr;
+		if (waterKind && noWater) return D3D_OK;
 		if (m_pixelShader != 0 && !waterKind) { ++g_cnt[2]; Note("skipped, pixel shader", m_vertexShader); return D3D_OK; }
 		if ((m_vertexShader & 0x80000000u) || m_vertexShader == 0) { ++g_cnt[3]; Note("skipped, vertex shader", m_vertexShader); return D3D_OK; }
-		++g_cnt[0];
+		++g_cnt[0]; ++g_cnt[14];
 		Note("drawn", m_vertexShader);
-		if (!EnsureRendering()) { ++g_cnt[13]; return D3D_OK; }
-
 		const DWORD fvf = m_vertexShader;
 		const bool pretransformed = (fvf & 0xE) == 0x4;
+		if (pretransformed && B.scene3D && B.stage == 0 && B.postOn) { static int n = 0; if (n++ < 8) { Note("first interface draw after the scene", fvf); Log("    after %u draws, vertices %u, vertex shader 0x%X, zenable %u, viewport %ux%u", g_cnt[14], (unsigned)numVertices, fvf, m_renderStates[D3DRS_ZENABLE], m_viewport.Width, m_viewport.Height); } }
+		// the full screen shadow quad of the stencil shadows is pre-transformed too but still belongs to the 3D scene
+		if (!PrepareStage(pretransformed && !m_renderStates[D3DRS_STENCILENABLE] && !m_renderStates[D3DRS_ZENABLE])) { ++g_cnt[13]; return D3D_OK; }
+		if (!EnsureRendering()) { ++g_cnt[13]; return D3D_OK; }
+		if (!pretransformed && !B.curTarget) B.scene3D = true;
 		const UINT stride = m_stride ? m_stride : 16;
 
 		// copy this draw's data into the ring buffer
@@ -1660,6 +1728,7 @@ private:
 			key.stencilMask = m_renderStates[D3DRS_STENCILMASK]; key.stencilWriteMask = m_renderStates[D3DRS_STENCILWRITEMASK];
 		}
 		key.ps = (uint32_t)waterKind;
+		key.hdr = (B.postOn && B.stage == 0 && !B.curTarget && B.hdr) ? 1 : 0;
 		key.cull = m_renderStates[D3DRS_CULLMODE]; key.colorMask = m_renderStates[D3DRS_COLORWRITEENABLE] & 0xF;
 		VkPipeline pipe = GetPipeline(key);
 		if (!pipe) return D3D_OK;
