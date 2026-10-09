@@ -29,7 +29,77 @@ layout(location = 0) out vec4 outColor;
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-#if defined(PASS_BLOOM_DOWN0) || defined(PASS_BLOOM_DOWN)
+#if defined(PASS_AO) || defined(PASS_AOBLUR)
+
+// view space depth of a depth buffer value; the sign of the projection's [2][3] element is in p2.w
+float viewZ(float d) { return u.proj.w / (u.p2.w * d - u.proj.z); }
+
+vec3 viewPos(vec2 p)
+{
+	float z = viewZ(texture(t0, p).r);
+	vec2 ndc = vec2(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0);
+	return vec3(ndc.x * u.p2.w * z / u.proj.x, ndc.y * u.p2.w * z / u.proj.y, z);
+}
+
+#endif
+
+#if defined(PASS_AO)
+
+void main()
+{
+	float d = texture(t0, uv).r;
+	if (d >= 0.99999) { outColor = vec4(1.0); return; }
+	vec2 px = u.texel.xy;
+	vec3 P = viewPos(uv);
+	vec3 Pr = viewPos(uv + vec2(px.x, 0.0)), Pl = viewPos(uv - vec2(px.x, 0.0));
+	vec3 Pu = viewPos(uv - vec2(0.0, px.y)), Pd = viewPos(uv + vec2(0.0, px.y));
+	vec3 dx = abs(Pr.z - P.z) < abs(P.z - Pl.z) ? Pr - P : P - Pl;
+	vec3 dy = abs(Pu.z - P.z) < abs(P.z - Pd.z) ? Pu - P : P - Pd;
+	vec3 n = normalize(cross(dx, dy));
+	if (dot(n, -P) < 0.0) n = -n;
+
+	float radius = u.p1.w;
+	float dist = abs(P.z);
+	float rpx = clamp(radius * abs(u.proj.x) * 0.5 * u.texel.z / dist, 3.0, 110.0);
+	float ang = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+	float occ = 0.0;
+	const int N = 20;
+	for (int i = 0; i < N; ++i)
+	{
+		float t = (float(i) + 0.5) / float(N);
+		float a = ang + float(i) * 2.399963;
+		vec2 o = vec2(cos(a), sin(a)) * rpx * (0.15 + 0.85 * t) * px;
+		vec3 S = viewPos(uv + o);
+		vec3 v = S - P;
+		float len = length(v);
+		float ndv = dot(n, v) / max(len, 1e-4);
+		float fall = 1.0 - clamp(len / radius, 0.0, 1.0);
+		occ += max(ndv - 0.10, 0.0) * fall;
+	}
+	occ = occ / float(N) * 2.4;
+	outColor = vec4(1.0 - clamp(occ * u.p1.z, 0.0, 0.85), 0.0, 0.0, 1.0);
+}
+
+#elif defined(PASS_AOBLUR)
+
+// depth aware blur along the direction in p2.xy (in uv units per tap), depth buffer in t1
+void main()
+{
+	float zc = abs(viewZ(texture(t1, uv).r));
+	float sum = texture(t0, uv).r, wsum = 1.0;
+	for (int k = -4; k <= 4; ++k)
+	{
+		if (k == 0) continue;
+		vec2 p = uv + u.p2.xy * float(k);
+		float z = abs(viewZ(texture(t1, p).r));
+		float w = (1.0 - abs(float(k)) / 5.0) * exp(-abs(z - zc) / max(zc, 1.0) * 120.0);
+		sum += texture(t0, p).r * w;
+		wsum += w;
+	}
+	outColor = vec4(sum / wsum, 0.0, 0.0, 1.0);
+}
+
+#elif defined(PASS_BLOOM_DOWN0) || defined(PASS_BLOOM_DOWN)
 
 vec3 prefilter(vec3 c)
 {
@@ -100,6 +170,8 @@ void main()
 	vec3 c = texture(t0, uv).rgb;
 	if (u.p2.y > 0.5)
 	{
+		if (u.p1.z > 0.0)
+			c *= texture(t2, uv).r;
 		vec3 bloom = texture(t1, uv).rgb;
 		c += bloom * u.p0.z;
 		c = rolloff(c);

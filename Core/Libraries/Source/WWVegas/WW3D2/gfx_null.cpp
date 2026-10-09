@@ -26,6 +26,12 @@ class NullD3D : public IDirect3D8NullBase
 {
 public:
 	NULLGFX_REFCOUNT
+	// 24 bit and palette textures are not offered: the engine falls back to a 32 bit format
+	STDMETHOD(CheckDeviceFormat)(THIS_ UINT, D3DDEVTYPE, D3DFORMAT, DWORD, D3DRESOURCETYPE rtype, D3DFORMAT fmt) override
+	{
+		if (rtype == D3DRTYPE_TEXTURE && (fmt == D3DFMT_R8G8B8 || fmt == D3DFMT_P8 || fmt == D3DFMT_A8P8)) return D3DERR_NOTAVAILABLE;
+		return D3D_OK;
+	}
 	STDMETHOD_(UINT, GetAdapterCount)(THIS) override { return 1; }
 	STDMETHOD(GetAdapterIdentifier)(THIS_ UINT, DWORD, D3DADAPTER_IDENTIFIER8* id) override
 	{

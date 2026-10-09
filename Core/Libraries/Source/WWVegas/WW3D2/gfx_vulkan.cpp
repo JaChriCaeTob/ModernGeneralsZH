@@ -106,6 +106,7 @@ struct GpuTexture
 	Allocation alloc;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	uint32_t width = 0, height = 0, levels = 0;
+	bool isDepth = false;
 	bool renderTarget = false, loaded = false;		// render target textures live on the GPU only; loaded once they hold rendered content
 	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;	// tracked for render targets
 };
@@ -185,6 +186,8 @@ struct Backend
 	GpuTexture* offDepth = nullptr;					// depth/stencil shared by all off-screen passes
 	// HDR scene and post processing (gfx_vk_post.inl)
 	GpuTexture* hdr = nullptr; GpuTexture* ldr = nullptr; GpuTexture* bloom[5] = {};
+	GpuTexture* ao[2] = {}; GpuTexture* depthTex = nullptr; VkImageView depthSampleView = VK_NULL_HANDLE;
+	float lastProj[16] = {}, lastView[16] = {}; bool haveProj = false;
 	VkShaderModule postVs = VK_NULL_HANDLE, postFs[8] = {};
 	std::map<uint64_t, VkPipeline> postPipes;
 	bool postOn = true;								// false: draw straight to the swapchain
@@ -450,7 +453,7 @@ bool CreateSwapchain()
 	VkImageCreateInfo di{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	di.imageType = VK_IMAGE_TYPE_2D; di.format = VK_FORMAT_D32_SFLOAT_S8_UINT; di.extent = { ext.width, ext.height, 1 };
 	di.mipLevels = 1; di.arrayLayers = 1; di.samples = VK_SAMPLE_COUNT_1_BIT; di.tiling = VK_IMAGE_TILING_OPTIMAL;
-	di.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT; di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	di.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VKCHECK(vkCreateImage(B.device, &di, nullptr, &B.depthImage));
 	VkMemoryRequirements req;
 	vkGetImageMemoryRequirements(B.device, B.depthImage, &req);
@@ -477,6 +480,7 @@ bool MapFormat(D3DFORMAT f, FormatInfo& out)
 	switch (f)
 	{
 	case D3DFMT_A8R8G8B8: out = { VK_FORMAT_B8G8R8A8_UNORM, { I, I, I, I } }; return true;
+	case D3DFMT_R8G8B8: out = { VK_FORMAT_B8G8R8A8_UNORM, { I, I, I, ONE } }; return true;		// expanded to 4 bytes on upload
 	case D3DFMT_X8R8G8B8: out = { VK_FORMAT_B8G8R8A8_UNORM, { I, I, I, ONE } }; return true;
 	case D3DFMT_R5G6B5: out = { VK_FORMAT_R5G6B5_UNORM_PACK16, { I, I, I, ONE } }; return true;
 	case D3DFMT_A1R5G5B5: out = { VK_FORMAT_A1R5G5B5_UNORM_PACK16, { I, I, I, I } }; return true;
@@ -560,7 +564,8 @@ void UploadLevels(GpuTexture* t, const std::vector<const NullSurface*>& levels)
 {
 	VkDeviceSize total = 0;
 	std::vector<VkDeviceSize> offsets;
-	for (const NullSurface* s : levels) { offsets.push_back(total); total += (s->m_data.size() + 15) & ~15ull; }
+	auto sizeOf = [](const NullSurface* s) -> size_t { return s->m_format == D3DFMT_R8G8B8 ? s->m_data.size() / 3 * 4 : s->m_data.size(); };
+	for (const NullSurface* s : levels) { offsets.push_back(total); total += (sizeOf(s) + 15) & ~15ull; }
 	++g_uploads; g_uploadBytes += total;
 	if (B.pendingStaging + total > 256ull * 1024 * 1024)
 		FlushUploadsSync();
@@ -571,7 +576,14 @@ void UploadLevels(GpuTexture* t, const std::vector<const NullSurface*>& levels)
 		return;
 	}
 	for (size_t i = 0; i < levels.size(); ++i)
-		memcpy((char*)sa.mapped + offsets[i], levels[i]->m_data.data(), levels[i]->m_data.size());
+		if (levels[i]->m_format == D3DFMT_R8G8B8)
+		{
+			uint8_t* d = (uint8_t*)sa.mapped + offsets[i];
+			const uint8_t* s = levels[i]->m_data.data();
+			for (size_t k = 0, n = levels[i]->m_data.size() / 3; k < n; ++k) { d[4 * k] = s[3 * k]; d[4 * k + 1] = s[3 * k + 1]; d[4 * k + 2] = s[3 * k + 2]; d[4 * k + 3] = 255; }
+		}
+		else
+			memcpy((char*)sa.mapped + offsets[i], levels[i]->m_data.data(), levels[i]->m_data.size());
 	B.deferredBuffers.push_back({ staging, sa });
 	B.pendingStaging += total;
 
@@ -625,7 +637,10 @@ GpuTexture* EnsureGpuTexture(NullTexture* tex)
 	FormatInfo fi;
 	NullSurface* l0 = tex->m_levels[0];
 	if (!MapFormat(l0->m_format, fi))
+	{
+		static int n = 0; if (n++ < 20) Log("texture format %d (%ux%u) not supported, drawn white", (int)l0->m_format, l0->m_width, l0->m_height);
 		return B.white;
+	}
 	if (l0->m_usage & D3DUSAGE_RENDERTARGET)
 	{
 		// off-screen render target: an image that is only ever drawn to and sampled, matching the swapchain format
@@ -1092,6 +1107,7 @@ struct PostCfg
 {
 	float bloomThreshold = 0.78f, bloomKnee = 0.30f, bloomIntensity = 0.30f, saturation = 1.06f, contrast = 1.04f;
 	bool fxaa = true;
+	float aoStrength = 0.85f, aoRadius = 22.0f;
 } g_postCfg;
 
 #include "gfx_vk_post.inl"
@@ -1320,8 +1336,8 @@ public:
 	{
 		for (int i = 0; i < 512; ++i) { memset(m_matrix[i], 0, sizeof(m_matrix[i])); m_matrix[i][0] = m_matrix[i][5] = m_matrix[i][10] = m_matrix[i][15] = 1.0f; }
 		m_renderStates[D3DRS_COLORWRITEENABLE] = 0xF;
-		{ const char* e = getenv("GENERALS_POST"); if (e && e[0] == '0') B.postOn = false; }
-		{ const char* e = getenv("GENERALS_BLOOM"); if (e) g_postCfg.bloomIntensity = (float)atof(e); e = getenv("GENERALS_FXAA"); if (e && e[0] == '0') g_postCfg.fxaa = false; }
+		{ const char* e = getenv("GENERALS_POST"); B.postOn = e && e[0] == '1'; }
+		{ const char* e = getenv("GENERALS_BLOOM"); if (e) g_postCfg.bloomIntensity = (float)atof(e); e = getenv("GENERALS_FXAA"); if (e && e[0] == '0') g_postCfg.fxaa = false; e = getenv("GENERALS_AO"); if (e) g_postCfg.aoStrength = (float)atof(e); }
 		HWND w = pp.hDeviceWindow ? pp.hDeviceWindow : focus;
 		if (!B.ready)
 		{
@@ -1587,10 +1603,15 @@ private:
 		const DWORD fvf = m_vertexShader;
 		const bool pretransformed = (fvf & 0xE) == 0x4;
 		if (pretransformed && B.scene3D && B.stage == 0 && B.postOn) { static int n = 0; if (n++ < 8) { Note("first interface draw after the scene", fvf); Log("    after %u draws, vertices %u, vertex shader 0x%X, zenable %u, viewport %ux%u", g_cnt[14], (unsigned)numVertices, fvf, m_renderStates[D3DRS_ZENABLE], m_viewport.Width, m_viewport.Height); } }
+		if (pretransformed && g_frame > 12000 && g_frame % 997 == 0) { const float* v0 = (const float*)vertices; if (true) { D3DSURFACE_DESC d{}; if (m_tex[0]) static_cast<NullTexture*>(m_tex[0])->GetLevelDesc(0, &d); Log("radar draw: pos %.0f %.0f verts %u tex %dx%d fmt %d colorop %u c1 %u c2 %u alphaop %u blend %u(%u,%u)", v0[0], v0[1], (unsigned)numVertices, d.Width, d.Height, (int)d.Format, m_stageStates[0][D3DTSS_COLOROP], m_stageStates[0][D3DTSS_COLORARG1], m_stageStates[0][D3DTSS_COLORARG2], m_stageStates[0][D3DTSS_ALPHAOP], m_renderStates[D3DRS_ALPHABLENDENABLE], m_renderStates[D3DRS_SRCBLEND], m_renderStates[D3DRS_DESTBLEND]); } }
 		// the full screen shadow quad of the stencil shadows is pre-transformed too but still belongs to the 3D scene
-		if (!PrepareStage(pretransformed && !m_renderStates[D3DRS_STENCILENABLE] && !m_renderStates[D3DRS_ZENABLE])) { ++g_cnt[13]; return D3D_OK; }
+		if (!PrepareStage(pretransformed && !m_renderStates[D3DRS_STENCILENABLE])) { ++g_cnt[13]; return D3D_OK; }
 		if (!EnsureRendering()) { ++g_cnt[13]; return D3D_OK; }
-		if (!pretransformed && !B.curTarget) B.scene3D = true;
+		if (!pretransformed && !B.curTarget)
+		{
+			B.scene3D = true;
+			if (B.stage == 0) { B.haveProj = true; memcpy(B.lastProj, m_matrix[3], 64); memcpy(B.lastView, m_matrix[2], 64); }
+		}
 		const UINT stride = m_stride ? m_stride : 16;
 
 		// copy this draw's data into the ring buffer

@@ -4,7 +4,7 @@
 // the scene goes through bloom, a soft highlight roll-off, colour grading and FXAA and lands in the swapchain image; the interface
 // is then drawn straight onto the swapchain ("stage 1") so text and icons are never filtered.
 
-enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_COUNT };
+enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_COUNT };
 
 struct PostUbo
 {
@@ -53,7 +53,19 @@ bool CreatePostTargets()
 		w = std::max(1u, w / 2); h = std::max(1u, h / 2);
 		B.bloom[i] = NewTarget(w, h, VK_FORMAT_R16G16B16A16_SFLOAT, sampled);
 	}
-	bool ok = B.hdr && B.ldr;
+	B.ao[0] = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, sampled);
+	B.ao[1] = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, sampled);
+	// a view of the depth buffer for sampling; it is not owned by this wrapper
+	B.depthTex = new GpuTexture();
+	B.depthTex->image = B.depthImage; B.depthTex->width = B.extent.width; B.depthTex->height = B.extent.height; B.depthTex->isDepth = true;
+	{
+		VkImageViewCreateInfo vi{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+		vi.image = B.depthImage; vi.viewType = VK_IMAGE_VIEW_TYPE_2D; vi.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+		vi.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+		VKCHECK(vkCreateImageView(B.device, &vi, nullptr, &B.depthSampleView));
+		B.depthTex->view = B.depthSampleView;
+	}
+	bool ok = B.hdr && B.ldr && B.ao[0] && B.ao[1];
 	for (int i = 0; i < kBloomLevels; ++i) ok = ok && B.bloom[i];
 	if (!ok)
 	{
@@ -68,6 +80,10 @@ void DestroyPostTargets()
 	// called after vkDeviceWaitIdle
 	if (B.hdr) { DestroyGpuTexture(B.hdr); B.hdr = nullptr; }
 	if (B.ldr) { DestroyGpuTexture(B.ldr); B.ldr = nullptr; }
+	for (int i = 0; i < 2; ++i)
+		if (B.ao[i]) { DestroyGpuTexture(B.ao[i]); B.ao[i] = nullptr; }
+	if (B.depthSampleView) { vkDestroyImageView(B.device, B.depthSampleView, nullptr); B.depthSampleView = VK_NULL_HANDLE; }
+	if (B.depthTex) { delete B.depthTex; B.depthTex = nullptr; }
 	for (int i = 0; i < kBloomLevels; ++i)
 		if (B.bloom[i]) { DestroyGpuTexture(B.bloom[i]); B.bloom[i] = nullptr; }
 }
@@ -125,7 +141,7 @@ bool CreatePostShaders()
 	struct { const unsigned int* code; size_t size; } fs[PASS_COUNT] = {
 		{ g_gfxPostBloomDown0Frag, sizeof(g_gfxPostBloomDown0Frag) }, { g_gfxPostBloomDownFrag, sizeof(g_gfxPostBloomDownFrag) },
 		{ g_gfxPostBloomUpFrag, sizeof(g_gfxPostBloomUpFrag) }, { g_gfxPostCompositeFrag, sizeof(g_gfxPostCompositeFrag) },
-		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) } };
+		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) }, { g_gfxPostAoFrag, sizeof(g_gfxPostAoFrag) }, { g_gfxPostAoBlurFrag, sizeof(g_gfxPostAoBlurFrag) } };
 	for (int i = 0; i < PASS_COUNT; ++i)
 	{
 		smi.codeSize = fs[i].size; smi.pCode = fs[i].code;
@@ -182,10 +198,11 @@ void PostDraw(int pass, bool additive, GpuTexture* const in[4], PostUbo& ub, VkI
 		VkWriteDescriptorSet w[5] = {};
 		w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[0].pBufferInfo = &bi;
 		const VkSampler samp = GetSampler(2, 2, 0, 3, 3, 1);
+		const VkSampler sampNearest = GetSampler(1, 1, 0, 3, 3, 1);
 		for (int i = 0; i < 4; ++i)
 		{
 			GpuTexture* t = in[i] ? in[i] : B.white;
-			imgs[i] = { samp, t->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+			imgs[i] = { t->isDepth ? sampNearest : samp, t->view, t->isDepth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 			w[1 + i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1 + i].dstBinding = 1 + i; w[1 + i].descriptorCount = 1;
 			w[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[1 + i].pImageInfo = &imgs[i];
 		}
@@ -234,6 +251,30 @@ bool RunPostProcess()
 	ub.p2[0] = g_postCfg.fxaa ? 1.0f : 0.0f; ub.p2[1] = has3D ? 1.0f : 0.0f;
 
 	GpuTexture* none[4] = { nullptr, nullptr, nullptr, nullptr };
+	bool haveAo = false;
+	if (has3D && B.haveProj && g_postCfg.aoStrength > 0.0f && B.depthTex && B.ao[0])
+	{
+		// the scene's depth buffer becomes readable
+		ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+		PostUbo a = ub;
+		a.proj[0] = B.lastProj[0]; a.proj[1] = B.lastProj[5]; a.proj[2] = B.lastProj[10]; a.proj[3] = B.lastProj[14];
+		a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f;
+		a.p1[2] = g_postCfg.aoStrength; a.p1[3] = g_postCfg.aoRadius;
+		GpuTexture* inD[4] = { B.depthTex, nullptr, nullptr, nullptr };
+		PostDraw(PASS_AO, false, inD, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
+		B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
+		a.p2[0] = 1.0f / w; a.p2[1] = 0.0f;
+		GpuTexture* inH[4] = { B.ao[0], B.depthTex, nullptr, nullptr };
+		PostDraw(PASS_AOBLUR, false, inH, a, B.ao[1]->image, B.ao[1]->view, B.ao[1]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
+		B.ao[1]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[1]);
+		a.p2[0] = 0.0f; a.p2[1] = 1.0f / h;
+		GpuTexture* inV[4] = { B.ao[1], B.depthTex, nullptr, nullptr };
+		PostDraw(PASS_AOBLUR, false, inV, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, false);
+		B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
+		haveAo = true;
+	}
 	if (has3D && g_postCfg.bloomIntensity > 0.0f)
 	{
 		// bright pass and down sampling chain
@@ -265,11 +306,12 @@ bool RunPostProcess()
 	}
 
 	// composite into the LDR image, then FXAA into the swapchain (or straight into the swapchain when there is no 3D scene)
-	GpuTexture* inC[4] = { B.hdr, B.bloom[0], nullptr, nullptr };
+	GpuTexture* inC[4] = { B.hdr, B.bloom[0], haveAo ? B.ao[0] : nullptr, nullptr };
 	if (has3D)
 	{
 		PostUbo c = ub;
 		if (g_postCfg.bloomIntensity <= 0.0f) c.p0[2] = 0.0f;
+		c.p1[2] = haveAo ? g_postCfg.aoStrength : 0.0f;
 		PostDraw(PASS_COMPOSITE, false, inC, c, B.ldr->image, B.ldr->view, B.ldr->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
 		B.ldr->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ldr);
 		GpuTexture* inF[4] = { B.ldr, nullptr, nullptr, nullptr };
