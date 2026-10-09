@@ -145,6 +145,6 @@ What it does: swapchain, asynchronous texture upload with content hashing, per-f
 and two shaders (`Shaders/gfx_fixed.vert/.frag`, compiled with `scripts/compile-vk-shaders.ps1`) that reproduce the Direct3D 8 fixed-function pipeline:
 four-stage texture combiners, alpha test, vertex lighting, texture coordinate generation and transforms, pre-transformed vertices, stencil (shadow volumes).
 
-Not implemented yet: programmable shaders (caps advertise none, so the engine uses fixed-function paths; the updated water needs them), fog, off-screen render targets
+Not implemented yet: programmable shaders (caps advertise none, so the engine uses fixed-function paths; the updated water needs them), fog. Off-screen render targets (render-to-texture, used by heat haze, shockwave and shadow decals) and back buffer read back are implemented but not yet verified in a scene that uses them.
 and back-buffer readback (shockwave and heat haze effects are skipped).
 The game is CPU-bound, so this backend is not faster than DXVK today; its purpose is to be the base for new rendering features.

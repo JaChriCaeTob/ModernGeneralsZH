@@ -101,6 +101,7 @@ public:
 	D3DPOOL m_pool;
 	IDirect3DDevice8* m_device;
 	std::vector<BYTE> m_data;
+	void* m_texture = nullptr;		// the NullTexture this surface is a level of
 	bool* m_ownerDirty;		// set when the surface content may have changed (a texture level or a render target copy)
 	bool m_dirty = true;
 };
@@ -122,6 +123,7 @@ public:
 		{
 			NullSurface* level = new NullSurface(w, h, format, usage, pool, device);
 			level->m_ownerDirty = &m_dirty;
+			level->m_texture = this;
 			m_levels.push_back(level);
 			w = (w > 1 ? w / 2 : 1); h = (h > 1 ? h / 2 : 1);
 		}

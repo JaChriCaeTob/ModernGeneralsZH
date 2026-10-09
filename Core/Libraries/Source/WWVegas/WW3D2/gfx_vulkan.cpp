@@ -106,6 +106,8 @@ struct GpuTexture
 	Allocation alloc;
 	VkFormat format = VK_FORMAT_UNDEFINED;
 	uint32_t width = 0, height = 0, levels = 0;
+	bool renderTarget = false, loaded = false;		// render target textures live on the GPU only; loaded once they hold rendered content
+	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;	// tracked for render targets
 };
 
 struct PipeKey
@@ -174,6 +176,11 @@ struct Backend
 	VkSemaphore imageAvailable = VK_NULL_HANDLE;
 	uint32_t imageIndex = 0;
 	bool acquired = false, rendering = false, cmdOpen = false;
+	GpuTexture* curTarget = nullptr;				// where the device draws: nullptr = back buffer, else a render target texture
+	GpuTexture* passTarget = nullptr;				// target of the open render pass
+	bool targetUnsupported = false;					// the device target is a surface we cannot draw to: draws are skipped
+	VkExtent2D passExtent{};
+	GpuTexture* offDepth = nullptr;					// depth/stencil shared by all off-screen passes
 	bool colorLoaded = false;						// the frame already has content in the swapchain image (resume with load, not clear)
 	bool semaphoreUsed = false;						// imageAvailable was already waited on by an earlier submit of this frame
 	VkBuffer readBuf = VK_NULL_HANDLE;				// host visible destination of back buffer read backs
@@ -203,6 +210,7 @@ struct Backend
 	bool ready = false;
 	bool anisotropy = false;
 };
+void EndPass();
 
 Backend B;
 
@@ -465,14 +473,15 @@ bool MapFormat(D3DFORMAT f, FormatInfo& out)
 	}
 }
 
-GpuTexture* CreateGpuTexture(uint32_t w, uint32_t h, uint32_t levels, const FormatInfo& fi)
+GpuTexture* CreateGpuTexture(uint32_t w, uint32_t h, uint32_t levels, const FormatInfo& fi, bool rt = false)
 {
 	GpuTexture* t = new GpuTexture();
+	t->renderTarget = rt;
 	t->format = fi.vk; t->width = w; t->height = h; t->levels = levels;
 	VkImageCreateInfo ci{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	ci.imageType = VK_IMAGE_TYPE_2D; ci.format = fi.vk; ci.extent = { w, h, 1 }; ci.mipLevels = levels; ci.arrayLayers = 1;
 	ci.samples = VK_SAMPLE_COUNT_1_BIT; ci.tiling = VK_IMAGE_TILING_OPTIMAL;
-	ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT; ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | (rt ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0); ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	if (vkCreateImage(B.device, &ci, nullptr, &t->image) != VK_SUCCESS) { delete t; return nullptr; }
 	VkMemoryRequirements req;
 	vkGetImageMemoryRequirements(B.device, t->image, &req);
@@ -514,6 +523,17 @@ void FlushUploadsSync()
 	vkDestroyFence(B.device, fence, nullptr);
 	vkResetCommandBuffer(B.uploadCmd, 0);
 	FreeDeferredBuffers();
+}
+
+void OpenUploadCmd()
+{
+	if (B.uploadOpen)
+		return;
+	vkResetCommandBuffer(B.uploadCmd, 0);
+	VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+	bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	vkBeginCommandBuffer(B.uploadCmd, &bi);
+	B.uploadOpen = true;
 }
 
 // Records the upload of all levels into the frame's upload command buffer. The staging memory stays alive until the frame's fence.
@@ -581,12 +601,27 @@ GpuTexture* EnsureGpuTexture(NullTexture* tex)
 	if (!tex)
 		return B.white;
 	GpuTexture* g = (GpuTexture*)tex->m_gpu;
-	if (g && !tex->m_dirty)
+	if (g && (!tex->m_dirty || g->renderTarget))
 		return g;
 	FormatInfo fi;
 	NullSurface* l0 = tex->m_levels[0];
 	if (!MapFormat(l0->m_format, fi))
 		return B.white;
+	if (l0->m_usage & D3DUSAGE_RENDERTARGET)
+	{
+		// off-screen render target: an image that is only ever drawn to and sampled, matching the swapchain format
+		const VkComponentSwizzle I = VK_COMPONENT_SWIZZLE_IDENTITY;
+		fi.vk = B.swapFormat; fi.swizzle = { I, I, I, I };
+		g = CreateGpuTexture(l0->m_width, l0->m_height, 1, fi, true);
+		if (!g)
+			return B.white;
+		tex->m_gpu = g; tex->m_dirty = false;
+		OpenUploadCmd();
+		ImageBarrier(B.uploadCmd, g->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+		g->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		return g;
+	}
 	if (g && (g->width != l0->m_width || g->height != l0->m_height || g->levels != tex->m_levels.size() || g->format != fi.vk))
 	{
 		B.deferredTextures.push_back(g);
@@ -622,6 +657,14 @@ void DestroyGpuTexture(GpuTexture* g)
 
 void OnTextureDestroyed(NullTexture* tex)
 {
+	GpuTexture* g = (GpuTexture*)tex->m_gpu;
+	if (g && g->renderTarget)
+	{
+		if (B.rendering && B.passTarget == g)
+			EndPass();
+		if (B.curTarget == g) { B.curTarget = nullptr; B.targetUnsupported = true; }
+		if (B.passTarget == g) B.passTarget = nullptr;
+	}
 	if (tex->m_gpu && B.ready)
 		B.deferredTextures.push_back((GpuTexture*)tex->m_gpu);
 	tex->m_gpu = nullptr;
@@ -908,10 +951,84 @@ bool CreateInstanceAndDevice(HWND window)
 
 // ---- per frame ------------------------------------------------------------------------------------------------------------
 
+// Ends the open render pass. Off-screen targets go back to the sampled layout, the back buffer stays an attachment.
+void EndPass()
+{
+	if (!B.rendering)
+		return;
+	vkCmdEndRendering(B.cmd);
+	B.rendering = false;
+	if (B.passTarget)
+	{
+		ImageBarrier(B.cmd, B.passTarget->image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
+		B.passTarget->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		B.passTarget->loaded = true;
+	}
+	else
+		B.colorLoaded = true;
+}
+
+bool EnsureOffscreenDepth(uint32_t w, uint32_t h)
+{
+	if (B.offDepth && B.offDepth->width >= w && B.offDepth->height >= h)
+		return true;
+	if (B.offDepth)
+	{
+		w = std::max(w, B.offDepth->width); h = std::max(h, B.offDepth->height);
+		B.deferredTextures.push_back(B.offDepth);
+		B.offDepth = nullptr;
+	}
+	GpuTexture* d = new GpuTexture();
+	d->width = w; d->height = h;
+	VkImageCreateInfo di{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+	di.imageType = VK_IMAGE_TYPE_2D; di.format = VK_FORMAT_D32_SFLOAT_S8_UINT; di.extent = { w, h, 1 };
+	di.mipLevels = 1; di.arrayLayers = 1; di.samples = VK_SAMPLE_COUNT_1_BIT; di.tiling = VK_IMAGE_TILING_OPTIMAL;
+	di.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT; di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	if (vkCreateImage(B.device, &di, nullptr, &d->image) != VK_SUCCESS) { delete d; return false; }
+	VkMemoryRequirements req;
+	vkGetImageMemoryRequirements(B.device, d->image, &req);
+	d->alloc = Allocate(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
+	if (d->alloc.block < 0) { vkDestroyImage(B.device, d->image, nullptr); delete d; return false; }
+	vkBindImageMemory(B.device, d->image, d->alloc.memory, d->alloc.offset);
+	VkImageViewCreateInfo dv{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+	dv.image = d->image; dv.viewType = VK_IMAGE_VIEW_TYPE_2D; dv.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+	dv.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1 };
+	VKCHECK(vkCreateImageView(B.device, &dv, nullptr, &d->view));
+	B.offDepth = d;
+	return true;
+}
+
 bool EnsureRendering()
 {
-	if (B.rendering)
+	if (B.rendering && B.passTarget == B.curTarget)
 		return true;
+	EndPass();
+	if (B.curTarget)
+	{
+		GpuTexture* rt = B.curTarget;
+		if (!EnsureOffscreenDepth(rt->width, rt->height))
+			return false;
+		ImageBarrier(B.cmd, rt->image, rt->layout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT);
+		ImageBarrier(B.cmd, B.offDepth->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+		VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+		color.imageView = rt->view; color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		color.loadOp = rt->loaded ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR; color.storeOp = VK_ATTACHMENT_STORE_OP_STORE; color.clearValue.color = { { 0.f, 0.f, 0.f, 0.f } };
+		VkRenderingAttachmentInfo depth{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+		depth.imageView = B.offDepth->view; depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; depth.clearValue.depthStencil = { 1.0f, 0 };
+		VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+		ri.renderArea = { { 0, 0 }, { rt->width, rt->height } }; ri.layerCount = 1; ri.colorAttachmentCount = 1; ri.pColorAttachments = &color;
+		ri.pDepthAttachment = &depth; ri.pStencilAttachment = &depth;
+		vkCmdBeginRendering(B.cmd, &ri);
+		B.rendering = true; B.passTarget = rt; B.passExtent = { rt->width, rt->height };
+		return true;
+	}
 	if (!B.acquired)
 	{
 		for (int attempt = 0; attempt < 3; ++attempt)
@@ -944,7 +1061,7 @@ bool EnsureRendering()
 	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	ri.renderArea = { { 0, 0 }, B.extent }; ri.layerCount = 1; ri.colorAttachmentCount = 1; ri.pColorAttachments = &color; ri.pDepthAttachment = &depth; ri.pStencilAttachment = &depth;
 	vkCmdBeginRendering(B.cmd, &ri);
-	B.rendering = true;
+	B.rendering = true; B.passTarget = nullptr; B.passExtent = B.extent;
 	return true;
 }
 
@@ -957,6 +1074,8 @@ void PresentFrame()
 {
 	if (!B.ready)
 		return;
+	struct RestoreTarget { GpuTexture* t; ~RestoreTarget() { B.curTarget = t; } } restoreTarget{ B.curTarget };
+	B.curTarget = nullptr;
 	++g_frame;
 	g_frameDrawLog = 0;
 	if (!g_drawTrace.empty())
@@ -1031,7 +1150,11 @@ void PresentFrame()
 // waits for it, like a Direct3D 8 read of the render target would; rendering then resumes on top of the existing content.
 bool ReadBackBuffer(NullSurface* dst, RECT r)
 {
-	if (!B.ready || !dst || BytesPerPixel(dst->m_format) != 4 || !EnsureRendering())
+	if (!B.ready || !dst || BytesPerPixel(dst->m_format) != 4)
+		return false;
+	struct RestoreTarget { GpuTexture* t; ~RestoreTarget() { B.curTarget = t; } } restoreTarget{ B.curTarget };
+	B.curTarget = nullptr;
+	if (!EnsureRendering())
 		return false;
 	r.left = std::max<LONG>(r.left, 0); r.top = std::max<LONG>(r.top, 0);
 	r.right = std::min<LONG>(r.right, (LONG)std::min<UINT>(B.extent.width, dst->m_width));
@@ -1048,8 +1171,7 @@ bool ReadBackBuffer(NullSurface* dst, RECT r)
 			return false;
 		B.readSize = need;
 	}
-	vkCmdEndRendering(B.cmd);
-	B.rendering = false;
+	EndPass();
 	VkImage img = B.swapImages[B.imageIndex];
 	ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
@@ -1158,6 +1280,27 @@ public:
 	STDMETHOD(SetPixelShader)(THIS_ DWORD h) override { m_pixelShader = h; return D3D_OK; }
 	STDMETHOD(GetPixelShader)(THIS_ DWORD* h) override { *h = m_pixelShader; return D3D_OK; }
 
+	void SyncTarget()
+	{
+		B.curTarget = nullptr; B.targetUnsupported = false;
+		if (!B.ready || OnBackBuffer())
+			return;
+		NullSurface* s = static_cast<NullSurface*>(m_target);
+		NullTexture* tex = s ? (NullTexture*)s->m_texture : nullptr;
+		if (tex && (s->m_usage & D3DUSAGE_RENDERTARGET))
+		{
+			GpuTexture* g = EnsureGpuTexture(tex);
+			if (g && g->renderTarget) { B.curTarget = g; return; }
+		}
+		B.targetUnsupported = true;
+	}
+	STDMETHOD(SetRenderTarget)(THIS_ IDirect3DSurface8* rt, IDirect3DSurface8* z) override
+	{
+		HRESULT hr = NullDevice::SetRenderTarget(rt, z);
+		SyncTarget();
+		return hr;
+	}
+
 	// reading the back buffer (heat haze, shockwave) needs the GPU contents
 	STDMETHOD(CopyRects)(THIS_ IDirect3DSurface8* src, CONST RECT* rects, UINT count, IDirect3DSurface8* dst, CONST POINT* points) override
 	{
@@ -1195,7 +1338,7 @@ public:
 	}
 	STDMETHOD(Clear)(THIS_ DWORD, CONST D3DRECT*, DWORD flags, D3DCOLOR color, float z, DWORD stencil) override
 	{
-		if (!B.ready || !OnBackBuffer() || !EnsureRendering()) return D3D_OK;
+		if (!B.ready || B.targetUnsupported || !EnsureRendering()) return D3D_OK;
 		VkClearAttachment att[3];
 		uint32_t n = 0;
 		if (flags & 1)
@@ -1216,7 +1359,7 @@ public:
 		}
 		if (n)
 		{
-			VkClearRect cr{ { { 0, 0 }, B.extent }, 0, 1 };
+			VkClearRect cr{ { { 0, 0 }, B.passExtent }, 0, 1 };
 			vkCmdClearAttachments(B.cmd, n, att, 1, &cr);
 		}
 		return D3D_OK;
@@ -1297,7 +1440,7 @@ private:
 	HRESULT Submit(D3DPRIMITIVETYPE type, UINT, const void* vertices, UINT numVertices, const void* indices, UINT indexCount, int wide, int minIndex)
 	{
 		if (!B.ready || numVertices == 0) { ++g_cnt[12]; return D3D_OK; }
-		if (!OnBackBuffer()) { ++g_cnt[1]; Note("skipped, render target is not the back buffer", m_vertexShader); return D3D_OK; }
+		if (B.targetUnsupported) { ++g_cnt[1]; Note("skipped, render target cannot be drawn to", m_vertexShader); return D3D_OK; }
 		if (m_pixelShader != 0) { ++g_cnt[2]; Note("skipped, pixel shader", m_vertexShader); return D3D_OK; }
 		if ((m_vertexShader & 0x80000000u) || m_vertexShader == 0) { ++g_cnt[3]; Note("skipped, vertex shader", m_vertexShader); return D3D_OK; }
 		++g_cnt[0];
@@ -1352,7 +1495,7 @@ private:
 			}
 		}
 		memcpy(u.wvp, wvp, 64);
-		u.viewport[0] = 0; u.viewport[1] = 0; u.viewport[2] = (float)B.extent.width; u.viewport[3] = (float)B.extent.height;
+		u.viewport[0] = 0; u.viewport[1] = 0; u.viewport[2] = (float)B.passExtent.width; u.viewport[3] = (float)B.passExtent.height;
 		const DWORD tf = m_renderStates[D3DRS_TEXTUREFACTOR];
 		u.textureFactor[0] = ((tf >> 16) & 255) / 255.f; u.textureFactor[1] = ((tf >> 8) & 255) / 255.f; u.textureFactor[2] = (tf & 255) / 255.f; u.textureFactor[3] = ((tf >> 24) & 255) / 255.f;
 		{
@@ -1454,16 +1597,16 @@ private:
 		}
 
 		vkCmdBindPipeline(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
-		VkViewport vp{ 0, 0, (float)B.extent.width, (float)B.extent.height, 0.0f, 1.0f };
-		VkRect2D sc{ { 0, 0 }, B.extent };
+		VkViewport vp{ 0, 0, (float)B.passExtent.width, (float)B.passExtent.height, 0.0f, 1.0f };
+		VkRect2D sc{ { 0, 0 }, B.passExtent };
 		if (!pretransformed)
 		{
 			vp.x = (float)m_viewport.X; vp.y = (float)m_viewport.Y; vp.width = (float)m_viewport.Width; vp.height = (float)m_viewport.Height;
 			vp.minDepth = m_viewport.MinZ; vp.maxDepth = m_viewport.MaxZ;
 		}
 		sc.offset = { (int32_t)m_viewport.X, (int32_t)m_viewport.Y };
-		sc.extent = { std::min<uint32_t>(m_viewport.Width, B.extent.width - std::min<uint32_t>(m_viewport.X, B.extent.width)),
-			std::min<uint32_t>(m_viewport.Height, B.extent.height - std::min<uint32_t>(m_viewport.Y, B.extent.height)) };
+		sc.extent = { std::min<uint32_t>(m_viewport.Width, B.passExtent.width - std::min<uint32_t>(m_viewport.X, B.passExtent.width)),
+			std::min<uint32_t>(m_viewport.Height, B.passExtent.height - std::min<uint32_t>(m_viewport.Y, B.passExtent.height)) };
 		vkCmdSetViewport(B.cmd, 0, 1, &vp);
 		vkCmdSetScissor(B.cmd, 0, 1, &sc);
 		vkCmdSetStencilReference(B.cmd, VK_STENCIL_FACE_FRONT_AND_BACK, m_renderStates[D3DRS_STENCILREF]);
@@ -1475,7 +1618,7 @@ private:
 		for (int s = 0; s < 4; ++s)
 		{
 			GpuTexture* g = (m_tex[s] && u.stage[2 * s][0] != 1) ? EnsureGpuTexture(static_cast<NullTexture*>(m_tex[s])) : B.white;
-			if (!g) g = B.white;
+			if (!g || g == B.passTarget) g = B.white;
 			const DWORD* t = m_stageStates[s];
 			imgs[s] = { GetSampler(t[D3DTSS_MINFILTER], t[D3DTSS_MAGFILTER], t[D3DTSS_MIPFILTER], t[D3DTSS_ADDRESSU] ? t[D3DTSS_ADDRESSU] : 1, t[D3DTSS_ADDRESSV] ? t[D3DTSS_ADDRESSV] : 1, t[D3DTSS_MAXANISOTROPY]),
 				g->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
