@@ -59,9 +59,39 @@ layout(location = 0) out vec4 outColor;
 float sat(float x) { return clamp(x, 0.0, 1.0); }
 vec3 sat3(vec3 x) { return clamp(x, vec3(0.0), vec3(1.0)); }
 
+// Tileable caustic pattern: bright, thin, moving network of light lines
+float caustic(vec2 p, float t)
+{
+	const float TAU = 6.28318530718;
+	vec2 q = mod(p * TAU, TAU) - 250.0;
+	vec2 i = q;
+	float c = 1.0;
+	const float inten = 0.005;
+	for (int n = 0; n < 4; n++)
+	{
+		float tt = t * (1.0 - 3.5 / float(n + 1));
+		i = q + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+		c += 1.0 / length(vec2(q.x / (sin(i.x + tt) / inten), q.y / (cos(i.y + tt) / inten)));
+	}
+	c /= 4.0;
+	c = 1.17 - pow(c, 1.4);
+	return pow(abs(c), 8.0);
+}
+
+// One wave of a sum: height-like value in .x, slope in .yz. Peaked crests (Gerstner-like) through a sharpened sine.
+vec3 wave(vec2 p, vec2 dir, float k, float speed, float phase, float t, float sharp)
+{
+	float a = k * dot(dir, p) - speed * t + phase;
+	float s = sin(a);
+	float c = cos(a);
+	float e = exp(sharp * (s - 1.0));                  // narrow crests, wide troughs
+	float dh = sharp * c * e * k;                      // derivative along dir
+	return vec3(e, dir * dh);
+}
+
 void main()
 {
-	vec2 uvWater = vUv[0].xy, uvSparkle = vUv[1].xy, uvNoise = vUv[2].xy, uvMask = vUv[3].xy;
+	vec2 uvWater = vUv[0].xy, uvSparkle = vUv[1].xy, uvMask = vUv[3].xy;
 	vec4 projPos = vUv[4];
 	vec2 uvDepth = vUv[5].xy;
 	vec3 camPos = vUv[6].xyz;
@@ -70,35 +100,28 @@ void main()
 	float t = g_world.y;
 	vec2 world = uvDepth * g_world.zw - g_height.zw;
 
-	// ---- depth below the water surface, in world units
 	float terrain = texture(depthMap, uvDepth).r * g_height.y + g_height.x;
 	float depth = g_world.x - terrain;
 
-	// ---- waves: a sum of five directional waves with a noise warped phase; slope of each wave is analytic
-	vec4 nA = texture(noiseMap, world * 0.0110 + vec2(t * 0.017, t * 0.011));
-	vec4 nB = texture(noiseMap, world * 0.0270 + vec2(-t * 0.023, t * 0.019));
-	vec4 nC = texture(noiseMap, world * 0.0710 + vec2(t * 0.041, -t * 0.033));
-	vec2 warped = world + (nA.rg - 0.5) * 14.0 + (nB.gb - 0.5) * 5.0;
-	vec2 slope;
-	float crestSum;
-	{
-		const vec2 d0 = vec2(0.86, 0.51);   const float k0 = 0.105; const float a0 = 0.095; const float w0 = 0.70;
-		const vec2 d1 = vec2(0.31, 0.95);   const float k1 = 0.185; const float a1 = 0.080; const float w1 = 0.95;
-		const vec2 d2 = vec2(-0.55, 0.84);  const float k2 = 0.300; const float a2 = 0.065; const float w2 = 1.25;
-		const vec2 d3 = vec2(0.97, -0.24);  const float k3 = 0.480; const float a3 = 0.050; const float w3 = 1.60;
-		const vec2 d4 = vec2(-0.80, -0.60); const float k4 = 0.800; const float a4 = 0.030; const float w4 = 2.10;
-		float c0 = cos(k0 * dot(d0, warped) - w0 * t);
-		float c1 = cos(k1 * dot(d1, warped) - w1 * t + 1.3);
-		float c2 = cos(k2 * dot(d2, warped) - w2 * t + 2.1);
-		float c3 = cos(k3 * dot(d3, warped) - w3 * t + 0.4);
-		float c4 = cos(k4 * dot(d4, warped) - w4 * t + 4.2);
-		slope = d0 * (a0 * c0) + d1 * (a1 * c1) + d2 * (a2 * c2) + d3 * (a3 * c3) + d4 * (a4 * c4);
-		crestSum = c0 * 0.40 + c1 * 0.32 + c2 * 0.28;
-	}
-	slope += (nA.rg - 0.5) * 0.06 + (nB.rg - 0.5) * 0.035;
-	slope *= g_wave.w;
+	// ---- waves: swell plus chop, noise-warped so the pattern never reads as a lattice
+	vec4 nA = texture(noiseMap, world * 0.0090 + vec2(t * 0.013, t * 0.009));
+	vec4 nB = texture(noiseMap, world * 0.0260 + vec2(-t * 0.021, t * 0.017));
+	vec4 nC = texture(noiseMap, world * 0.0750 + vec2(t * 0.037, -t * 0.029));
+	vec2 warped = world + (nA.rg - 0.5) * 22.0 + (nB.gb - 0.5) * 7.0;
 
-	// ---- units on the water: rings spreading from the hull and a V shaped wake with foam behind moving ones
+	vec3 w0 = wave(warped, vec2(0.86, 0.51), 0.085, 0.60, 0.0, t, 2.2);
+	vec3 w1 = wave(warped, vec2(0.40, 0.92), 0.150, 0.85, 1.3, t, 2.6);
+	vec3 w2 = wave(warped, vec2(-0.60, 0.80), 0.260, 1.15, 2.1, t, 2.8);
+	vec3 w3 = wave(warped, vec2(0.95, -0.30), 0.430, 1.50, 0.4, t, 3.0);
+	vec3 w4 = wave(warped, vec2(-0.82, -0.57), 0.700, 1.95, 4.2, t, 3.0);
+	vec3 w5 = wave(warped, vec2(0.15, -0.99), 1.150, 2.60, 5.1, t, 3.0);
+	float heightSum = w0.x * 1.00 + w1.x * 0.80 + w2.x * 0.55 + w3.x * 0.35 + w4.x * 0.20 + w5.x * 0.10;
+	vec2 slope = w0.yz * 0.45 + w1.yz * 0.34 + w2.yz * 0.22 + w3.yz * 0.13 + w4.yz * 0.07 + w5.yz * 0.035;
+	slope += (nA.rg - 0.5) * 0.05 + (nB.rg - 0.5) * 0.03 + (nC.rg - 0.5) * 0.02;
+	slope *= g_wave.w * 0.9;
+	float crest = sat((heightSum - 1.15) * 1.1);       // how high on a wave crest this pixel sits
+
+	// ---- units on the water: rings from the hull and a V shaped wake with foam behind moving ones
 	float wakeFoam = 0.0;
 	for (int i = 0; i < 6; i++)
 	{
@@ -119,71 +142,80 @@ void main()
 		wakeFoam += (exp(-armOffset * armOffset) * 0.9 + exp(-coreOffset * coreOffset) * 0.6) * behindMask * spd * od.z;
 	}
 
-	// normal and view vector in camera space
 	vec3 normal = normalize(slope.x * g_axisX + slope.y * g_axisY + g_axisZ);
 	vec3 incident = normalize(camPos);
 	float cosView = sat(dot(normal, -incident));
+	vec3 sunCam = g_sun.x * g_axisX + g_sun.y * g_axisY + g_sun.z * g_axisZ;
+	float sunUp = sat(g_sun.z);
 
-	// ---- refraction
+	// light of the day from the vertex colour (the sea mesh is shaded); kept partly so night and dusk still read, but never muddy
+	vec3 dayLight = sat3(vertexColor.rgb * 1.9);
+	vec3 lightTint = mix(vec3(1.0), dayLight, 0.35) * (0.80 + 0.30 * sunUp);
+
+	// ---- refraction: the scene seen through the wavy surface, calmer right at the shore
 	vec2 screenUV = (projPos.xy / projPos.w) * g_screen.xy + g_screen.zw;
-	vec2 refractUV = screenUV + slope * g_wave.x * sat(depth * 0.6);
+	vec2 refractUV = screenUV + slope * g_wave.x * sat(depth * 0.5) * 1.6;
 	vec3 scene = texture(sceneMap, refractUV).rgb;
 
-	// ---- absorption
-	vec3 absorb = vec3(0.34, 0.095, 0.060);
-	float optical = max(depth, 0.0) * g_misc.w;
-	vec3 transmit = exp(-absorb * optical);
-	float depthMix = sat(optical * (1.0 / 9.0));
-	vec3 shallowCol = vec3(0.040, 0.420, 0.470);
-	vec3 deepCol = vec3(0.010, 0.060, 0.230);
+	// ---- caustics on the seabed: bright light lines in the shallows
+	float causticMask = sat(1.0 - depth / 5.0) * sat(depth * 3.0);
+	float cau = caustic(world * 0.045 + slope * 0.4, t * 0.55) * causticMask;
+	scene += cau * vec3(0.55, 0.85, 0.80) * (0.5 + 0.5 * sunUp) * 1.4;
+
+	// ---- absorption: red is gone within a few units, blue survives; colours are deliberately saturated
+	vec3 absorb = vec3(0.48, 0.115, 0.050);
+	float d = max(depth, 0.0);
+	vec3 transmit = exp(-absorb * d * 0.55);
+	float depthMix = 1.0 - exp(-d * 0.22);            // shallow turquoise to deep ocean blue over ~12 units
+	vec3 shallowCol = vec3(0.060, 0.760, 0.680);
+	vec3 midCol     = vec3(0.020, 0.380, 0.640);
+	vec3 deepCol    = vec3(0.004, 0.090, 0.340);
+	vec3 bodyCol = mix(mix(shallowCol, midCol, sat(depthMix * 2.0)), deepCol, sat(depthMix * 2.0 - 1.0));
 	vec3 waterTint = texture(waterMap, uvWater + slope * 0.02).rgb;
-	vec3 inscatter = mix(shallowCol, deepCol, depthMix) * mix(vec3(1.0), waterTint * 1.7, 0.22) * (0.55 + 0.45 * sat(g_sun.z));
+	bodyCol *= mix(vec3(1.0), waterTint * 1.6, 0.12);
+	float waveShade = 0.80 + 0.45 * sat(dot(normal, sunCam));
+	vec3 color = scene * transmit + bodyCol * lightTint * waveShade * (1.0 - transmit);
 
-	vec3 lightTint = sat3(vertexColor.rgb * 1.9);
-#ifdef RIVER
-	float shroud = sat(vertexColor.a / max(g_misc.x, 0.001));
-	vec4 edge = texture(maskMap, uvMask);
-#else
-	float shroud = 1.0;
-#endif
+	// ---- subsurface scattering: sun shining through thin wave crests glows turquoise
+	float sss = pow(sat(dot(-incident, normalize(sunCam + normal * 0.45))), 3.0) * crest;
+	color += vec3(0.05, 0.62, 0.50) * sss * 1.5 * sunUp * lightTint;
 
-	vec3 sunCam0 = g_sun.x * g_axisX + g_sun.y * g_axisY + g_sun.z * g_axisZ;
-	float waveShade = 0.72 + 0.55 * sat(dot(normal, sunCam0));
-	vec3 color = scene * transmit + inscatter * lightTint * waveShade * (1.0 - transmit);
-
-	// ---- fresnel sky reflection
-	float fresnel = 0.16 + 0.84 * pow(1.0 - cosView, 3.0);
+	// ---- fresnel sky reflection with a horizon haze
+	float fresnel = 0.02 + 0.98 * pow(1.0 - cosView, 4.5);
 	vec3 reflected = reflect(incident, normal);
 	float skyUp = sat(dot(reflected, g_axisZ));
-	vec3 skyColor = mix(vec3(0.62, 0.74, 0.86), vec3(0.20, 0.42, 0.80), pow(skyUp, 0.6));
-	vec2 reflUV = projPos.xy / projPos.w + slope * 0.030;
+	vec3 skyColor = mix(vec3(0.70, 0.82, 0.92), vec3(0.16, 0.38, 0.82), pow(skyUp, 0.55));
+	vec2 reflUV = projPos.xy / projPos.w + slope * 0.035;
 	vec3 mirror = texture(reflMap, reflUV).rgb;
 	vec3 envColor = mix(skyColor * lightTint, mirror, g_refl.x);
-	color = mix(color, envColor, sat(fresnel * g_wave.z * sat(depth * 2.0)));
+	color = mix(color, envColor, sat(fresnel * g_wave.z * 1.1 * sat(depth * 2.5)));
 
-	// ---- sun glints
-	vec3 sunCam = sunCam0;
+	// ---- sun glints: tight highlight plus sparkle
 	vec3 halfVec = normalize(sunCam - incident);
-	float spec = pow(sat(dot(normal, halfVec)), g_misc.z) * g_misc.y;
+	float spec = pow(sat(dot(normal, halfVec)), g_misc.z * 1.5) * g_misc.y * 1.4;
 	vec2 sparkleUV = uvSparkle * 2.7 + slope * 0.05;
 	float sparkle = texture(sparkleMap, sparkleUV).r * texture(sparkleMap, sparkleUV * 2.31 + 0.47).r;
 	float sunFacing = sat(dot(normal, sunCam));
-	color += (spec + sparkle * 2.2 * pow(sunFacing, 14.0)) * vec3(1.0, 0.96, 0.88) * sat(depth * 0.8);
+	color += (spec + sparkle * 2.4 * pow(sunFacing, 12.0)) * vec3(1.0, 0.96, 0.88) * sat(depth * 0.8);
 
-	// ---- foam
-	float foamPattern = smoothstep(0.30, 0.78, nA.b * 0.55 + nB.g * 0.55 + nC.r * 0.30);
-	float shoreWidth = 0.55 + 0.28 * sin(t * 0.85 + nA.r * 6.28);
-	float shoreFoam = sat(1.0 - depth / shoreWidth) * (0.55 + 0.45 * foamPattern);
-	float bandPhase = depth * 3.0 - t * 0.85 + nB.r * 2.0;
-	float bands = pow(sat(sin(bandPhase)), 5.0) * sat(1.0 - depth * (1.0 / 1.8)) * foamPattern;
-	float crest = sat((crestSum - 0.72) * 4.0) * foamPattern * sat(depth * 0.3);
-	float foam = sat((shoreFoam + bands * 0.8 + crest * 0.6 + wakeFoam * foamPattern) * g_wave.y);
-	color = mix(color, vec3(0.93, 0.97, 1.0) * lightTint, foam);
+	// ---- foam: shore swash lines that run up the beach and fade, foam clouds on the wave crests, wakes
+	float foamPattern = smoothstep(0.28, 0.80, nA.b * 0.50 + nB.g * 0.55 + nC.r * 0.40);
+	float foamFine = smoothstep(0.35, 0.75, nC.g * 0.6 + nB.r * 0.5);
+	float swash = 0.65 + 0.35 * sin(t * 0.9 + nA.r * 6.28);
+	float shoreFoam = sat(1.0 - depth / (0.65 * swash + 0.15)) * (0.60 + 0.40 * foamPattern);
+	float phase = depth * 2.6 - t * 0.95 + nB.r * 2.4;
+	float lines = pow(sat(sin(phase)), 4.0) * sat(1.0 - depth * 0.45) * (0.45 + 0.55 * foamPattern);
+	float crestFoam = sat((crest - 0.35) * 2.2) * foamPattern * foamFine * sat(depth * 0.35);
+	float foam = sat((shoreFoam + lines * 0.85 + crestFoam * 0.9 + wakeFoam * (0.5 + 0.5 * foamPattern)) * g_wave.y);
+	vec3 foamCol = vec3(0.96, 0.99, 1.0) * mix(vec3(0.82), dayLight, 0.45);
+	color = mix(color, foamCol, foam);
 
-	// ---- opacity
-	float alpha = sat(depth * 4.0 + 0.05);
+	// ---- opacity: shore blends into the dry land, foam stays solid just off the beach
+	float alpha = sat(depth * 3.5 + 0.04);
 	alpha = max(alpha, foam * sat(depth * 10.0 + 0.3));
 #ifdef RIVER
+	float shroud = sat(vertexColor.a / max(g_misc.x, 0.001));
+	vec4 edge = texture(maskMap, uvMask);
 	alpha *= edge.a;
 	color *= shroud;
 #else
