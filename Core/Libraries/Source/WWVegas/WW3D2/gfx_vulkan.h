@@ -6,3 +6,5 @@
 
 bool VkGfx_Requested();
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT sdkVersion);
+void VkGfx_BeginScene3D();
+void VkGfx_EndScene3D();

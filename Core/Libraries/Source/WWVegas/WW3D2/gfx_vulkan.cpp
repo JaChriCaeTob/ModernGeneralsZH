@@ -191,7 +191,7 @@ struct Backend
 	VkShaderModule postVs = VK_NULL_HANDLE, postFs[8] = {};
 	std::map<uint64_t, VkPipeline> postPipes;
 	bool postOn = true;								// false: draw straight to the swapchain
-	int stage = 0;									// 0: 3D scene into the HDR image, 1: interface onto the swapchain
+	int stage = 1;									// 0: 3D scene into the HDR image (between VkGfx_BeginScene3D and EndScene3D), 1: straight onto the swapchain
 	bool scene3D = false;							// a 3D draw happened in this frame
 	bool depthLoaded = false;						// the depth buffer already holds this frame's scene
 	bool colorLoaded = false;						// the frame already has content in the swapchain image (resume with load, not clear)
@@ -1105,8 +1105,8 @@ bool EnsureRendering()
 uint32_t g_cnt[16] = {};
 struct PostCfg
 {
-	float bloomThreshold = 0.78f, bloomKnee = 0.30f, bloomIntensity = 0.30f, saturation = 1.06f, contrast = 1.04f;
-	bool fxaa = true;
+	float bloomThreshold = 0.92f, bloomKnee = 0.25f, bloomIntensity = 0.16f, saturation = 1.04f, contrast = 1.03f;
+	bool fxaa = false;
 	float aoStrength = 0.85f, aoRadius = 22.0f;
 } g_postCfg;
 
@@ -1151,7 +1151,7 @@ void PresentFrame()
 		// minimised or the swapchain could not be made: just drop the frame's recorded work (uploads still have to happen)
 		EndPass();
 		FlushUploadsSync();
-		B.colorLoaded = false; B.depthLoaded = false; B.semaphoreUsed = false; B.stage = 0; B.scene3D = false;
+		B.colorLoaded = false; B.depthLoaded = false; B.semaphoreUsed = false; B.stage = 1; B.scene3D = false;
 		vkEndCommandBuffer(B.cmd);
 		vkResetCommandBuffer(B.cmd, 0);
 		BeginCommandBuffer();
@@ -1180,7 +1180,7 @@ void PresentFrame()
 	VkPresentInfoKHR pi{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
 	pi.waitSemaphoreCount = 1; pi.pWaitSemaphores = &B.renderDone[B.imageIndex]; pi.swapchainCount = 1; pi.pSwapchains = &B.swapchain; pi.pImageIndices = &B.imageIndex;
 	VkResult pr = vkQueuePresentKHR(B.queue, &pi);
-	B.acquired = false; B.colorLoaded = false; B.depthLoaded = false; B.semaphoreUsed = false; B.stage = 0; B.scene3D = false;
+	B.acquired = false; B.colorLoaded = false; B.depthLoaded = false; B.semaphoreUsed = false; B.stage = 1; B.scene3D = false;
 
 	vkWaitForFences(B.device, 1, &B.frameFence, VK_TRUE, UINT64_MAX);
 	vkResetFences(B.device, 1, &B.frameFence);
@@ -1336,7 +1336,7 @@ public:
 	{
 		for (int i = 0; i < 512; ++i) { memset(m_matrix[i], 0, sizeof(m_matrix[i])); m_matrix[i][0] = m_matrix[i][5] = m_matrix[i][10] = m_matrix[i][15] = 1.0f; }
 		m_renderStates[D3DRS_COLORWRITEENABLE] = 0xF;
-		{ const char* e = getenv("GENERALS_POST"); B.postOn = e && e[0] == '1'; }
+		{ const char* e = getenv("GENERALS_POST"); B.postOn = !(e && e[0] == '0'); }
 		{ const char* e = getenv("GENERALS_BLOOM"); if (e) g_postCfg.bloomIntensity = (float)atof(e); e = getenv("GENERALS_FXAA"); if (e && e[0] == '0') g_postCfg.fxaa = false; e = getenv("GENERALS_AO"); if (e) g_postCfg.aoStrength = (float)atof(e); }
 		HWND w = pp.hDeviceWindow ? pp.hDeviceWindow : focus;
 		if (!B.ready)
@@ -1602,14 +1602,11 @@ private:
 		Note("drawn", m_vertexShader);
 		const DWORD fvf = m_vertexShader;
 		const bool pretransformed = (fvf & 0xE) == 0x4;
-		if (pretransformed && B.scene3D && B.stage == 0 && B.postOn) { static int n = 0; if (n++ < 8) { Note("first interface draw after the scene", fvf); Log("    after %u draws, vertices %u, vertex shader 0x%X, zenable %u, viewport %ux%u", g_cnt[14], (unsigned)numVertices, fvf, m_renderStates[D3DRS_ZENABLE], m_viewport.Width, m_viewport.Height); } }
-		if (pretransformed && g_frame > 12000 && g_frame % 997 == 0) { const float* v0 = (const float*)vertices; if (true) { D3DSURFACE_DESC d{}; if (m_tex[0]) static_cast<NullTexture*>(m_tex[0])->GetLevelDesc(0, &d); Log("radar draw: pos %.0f %.0f verts %u tex %dx%d fmt %d colorop %u c1 %u c2 %u alphaop %u blend %u(%u,%u)", v0[0], v0[1], (unsigned)numVertices, d.Width, d.Height, (int)d.Format, m_stageStates[0][D3DTSS_COLOROP], m_stageStates[0][D3DTSS_COLORARG1], m_stageStates[0][D3DTSS_COLORARG2], m_stageStates[0][D3DTSS_ALPHAOP], m_renderStates[D3DRS_ALPHABLENDENABLE], m_renderStates[D3DRS_SRCBLEND], m_renderStates[D3DRS_DESTBLEND]); } }
 		// the full screen shadow quad of the stencil shadows is pre-transformed too but still belongs to the 3D scene
-		if (!PrepareStage(pretransformed && !m_renderStates[D3DRS_STENCILENABLE])) { ++g_cnt[13]; return D3D_OK; }
+
 		if (!EnsureRendering()) { ++g_cnt[13]; return D3D_OK; }
 		if (!pretransformed && !B.curTarget)
 		{
-			B.scene3D = true;
 			if (B.stage == 0) { B.haveProj = true; memcpy(B.lastProj, m_matrix[3], 64); memcpy(B.lastView, m_matrix[2], 64); }
 		}
 		const UINT stride = m_stride ? m_stride : 16;
@@ -1873,9 +1870,26 @@ IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT)
 	return new VkD3D();
 }
 
+// Scene boundaries, called by the engine around the 3D views (W3DDisplay::draw): everything in between is drawn into the HDR image and goes
+// through the post processing chain; the interface drawn afterwards goes straight onto the swapchain and stays sharp.
+void VkGfx_BeginScene3D()
+{
+	if (!B.ready || !B.postOn || !B.hdr || B.stage == 0) return;
+	EndPass();
+	B.stage = 0; B.scene3D = true; B.colorLoaded = false; B.depthLoaded = false;
+}
+void VkGfx_EndScene3D()
+{
+	if (!B.ready || !B.postOn || B.stage != 0) return;
+	if (!RunPostProcess()) { B.stage = 1; B.scene3D = false; }
+}
+
 #else	// no Vulkan headers in this configuration
 
 bool VkGfx_Requested() { return false; }
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT) { return nullptr; }
+void VkGfx_BeginScene3D() {}
+void VkGfx_EndScene3D() {}
 
 #endif
+

@@ -35,6 +35,7 @@ static void drawFramerateBar();
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include <numeric>
+#include "WW3D2/gfx_vulkan.h"
 #include <stdlib.h>
 #include <windows.h>
 #include <io.h>
@@ -1729,8 +1730,10 @@ void W3DDisplay::calculateTerrainLOD()
 			updateViews();
 			if (WW3D::Begin_Render( true, true, Vector3( 0.0f, 0.0f, 0.0f ) ) == WW3D_ERROR_OK)
 			{
-				// draw all views of the world
+				// draw all views of the world (post processed by the native Vulkan backend, if it is in use)
+				VkGfx_BeginScene3D();
 				drawViews();
+				VkGfx_EndScene3D();
 				// render is all done!
 				WW3D::End_Render();
 			}
