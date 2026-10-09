@@ -192,7 +192,7 @@ The game rewrites this file when it exits, so edit it while the game is closed. 
 | `SunElevation` | random | Sun height in degrees (about 10 low and long shadows, 80 almost overhead). Only used together with `SunAzimuth`; without it the elevation is random between 35 and 62. |
 
 The same effect switches are in the game's options menu: **Options > Detail: Custom** opens the advanced pane with *Soft shadows (sun)*,
-*Ambient occlusion*, *Bloom (glow)* and *Anti-aliasing (FXAA)*. They apply immediately and are written to `Options.ini`. The three new boxes come
+*Ambient occlusion*, *Bloom (glow)*, *Anti-aliasing*, *New water (restart)* and *Shockwaves*, grouped under "Graphics enhancements". They apply immediately and are written to `Options.ini`. The new group comes
 from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes as a loose file into `<GameDir>\Window\Menus\` (generated from your own
 `WindowZH.big`; needs Python). Changing them in the middle of a game is limited by the game itself, so use the main menu.
 

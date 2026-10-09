@@ -49,6 +49,7 @@
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Gadget.h"
 #include "WW3D2/gfx_vulkan.h"
+#include "GameClient/Shockwave.h"
 #include "GameClient/GadgetCheckBox.h"
 #include "GameClient/GadgetStaticText.h"
 #include "GameClient/GadgetTextEntry.h"
@@ -197,6 +198,9 @@ static NameKeyType    checkHeatEffectsID = NAMEKEY_INVALID;
 static GameWindow *   checkHeatEffects   = nullptr;
 
 // extra check boxes of the native Vulkan renderer (added to the advanced pane by tools/patch_options_wnd.py)
+static GameWindow *   checkSoftShadows      = nullptr;
+static GameWindow *   checkUpdatedWater     = nullptr;
+static GameWindow *   checkShockwaves       = nullptr;
 static GameWindow *   checkAmbientOcclusion = nullptr;
 static GameWindow *   checkBloom            = nullptr;
 static GameWindow *   checkFXAA             = nullptr;
@@ -388,9 +392,17 @@ static void setDefaults()
 
 static void saveOptions()
 {
-	if (VkGfx_NativeActive() && checkAmbientOcclusion && checkBloom && checkFXAA && check3DShadows)
+	if (checkUpdatedWater)
+		(*pref)["UpdatedWater"] = GadgetCheckBoxIsChecked( checkUpdatedWater ) ? "yes" : "no";		// read when the water is created: takes effect after a restart
+	if (checkShockwaves)
 	{
-		const Bool soft = GadgetCheckBoxIsChecked( check3DShadows );
+		const Bool on = GadgetCheckBoxIsChecked( checkShockwaves );
+		(*pref)["Shockwaves"] = on ? "yes" : "no";
+		ShockwaveList::instance().setEnabled( on );
+	}
+	if (VkGfx_NativeActive() && checkAmbientOcclusion && checkBloom && checkFXAA && checkSoftShadows)
+	{
+		const Bool soft = GadgetCheckBoxIsChecked( checkSoftShadows );
 		const Bool ao = GadgetCheckBoxIsChecked( checkAmbientOcclusion );
 		const Bool bloom = GadgetCheckBoxIsChecked( checkBloom );
 		const Bool fxaa = GadgetCheckBoxIsChecked( checkFXAA );
@@ -1089,19 +1101,28 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	sliderParticleCapID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ParticleCapSlider" );
   sliderParticleCap = TheWindowManager->winGetWindowFromId( nullptr, sliderParticleCapID );
 
-	checkAmbientOcclusion = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckAmbientOcclusion" ) );
-	checkBloom            = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBloom" ) );
-	checkFXAA             = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckFXAA" ) );
 	{
+		auto find = [](const char *n) { return TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( n ) ); };
+		checkSoftShadows      = find( "OptionsMenu.wnd:CheckSoftShadows" );
+		checkAmbientOcclusion = find( "OptionsMenu.wnd:CheckAmbientOcclusion" );
+		checkBloom            = find( "OptionsMenu.wnd:CheckBloom" );
+		checkFXAA             = find( "OptionsMenu.wnd:CheckFXAA" );
+		checkUpdatedWater     = find( "OptionsMenu.wnd:CheckUpdatedWater" );
+		checkShockwaves       = find( "OptionsMenu.wnd:CheckShockwaves" );
+		GameWindow *header    = find( "OptionsMenu.wnd:EnhancementsHeader" );
 		const Bool native = VkGfx_NativeActive();
+		if (header)
+			GadgetStaticTextSetText( header, UnicodeString( native ? L"Graphics enhancements" : L"Graphics enhancements (switch GraphicsMode in Options.ini for the rest)" ) );
+		if (checkSoftShadows)      { GadgetCheckBoxSetText( checkSoftShadows, UnicodeString( L"Soft shadows" ) ); GadgetCheckBoxSetChecked( checkSoftShadows, optionFlag( pref, "SoftShadows", TRUE ) ); checkSoftShadows->winEnable( native ); }
 		if (checkAmbientOcclusion) { GadgetCheckBoxSetText( checkAmbientOcclusion, UnicodeString( L"Ambient occlusion" ) ); GadgetCheckBoxSetChecked( checkAmbientOcclusion, optionFlag( pref, "AmbientOcclusion", TRUE ) ); checkAmbientOcclusion->winEnable( native ); }
 		if (checkBloom)            { GadgetCheckBoxSetText( checkBloom, UnicodeString( L"Bloom (glow)" ) ); GadgetCheckBoxSetChecked( checkBloom, optionFlag( pref, "Bloom", TRUE ) ); checkBloom->winEnable( native ); }
-		if (checkFXAA)             { GadgetCheckBoxSetText( checkFXAA, UnicodeString( L"Anti-aliasing (FXAA)" ) ); GadgetCheckBoxSetChecked( checkFXAA, optionFlag( pref, "AntiAliasingFXAA", TRUE ) ); checkFXAA->winEnable( native ); }
-		if (native && check3DShadows)
+		if (checkFXAA)             { GadgetCheckBoxSetText( checkFXAA, UnicodeString( L"Anti-aliasing" ) ); GadgetCheckBoxSetChecked( checkFXAA, optionFlag( pref, "AntiAliasingFXAA", TRUE ) ); checkFXAA->winEnable( native ); }
+		if (checkUpdatedWater)     { GadgetCheckBoxSetText( checkUpdatedWater, UnicodeString( L"New water (restart)" ) ); GadgetCheckBoxSetChecked( checkUpdatedWater, optionFlag( pref, "UpdatedWater", TRUE ) ); }
+		if (checkShockwaves)       { GadgetCheckBoxSetText( checkShockwaves, UnicodeString( L"Shockwaves" ) ); GadgetCheckBoxSetChecked( checkShockwaves, optionFlag( pref, "Shockwaves", TRUE ) ); }
+		if (native)
 		{
-			// on the native renderer this box switches the sun shadow maps
-			GadgetCheckBoxSetText( check3DShadows, UnicodeString( L"Soft shadows (sun)" ) );
-			GadgetCheckBoxSetChecked( check3DShadows, optionFlag( pref, "SoftShadows", TRUE ) );
+			// the engine's own stencil and decal shadows are not used by the native renderer
+			if (check3DShadows) check3DShadows->winHide( TRUE );
 			if (check2DShadows) check2DShadows->winHide( TRUE );
 		}
 	}

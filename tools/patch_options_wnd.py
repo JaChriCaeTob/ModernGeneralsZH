@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Builds a patched Window\Menus\OptionsMenu.wnd that has three extra check boxes (ambient occlusion, bloom, FXAA) in the
-advanced display pane. The original file is read from the game's WindowZH.big; the result is written as a loose file into the game
-folder (loose files win over archives), so no original data is modified or redistributed.
+"""Builds a patched Window/Menus/OptionsMenu.wnd with a "graphics enhancements" group (a header and six check boxes) in the advanced
+display pane. The original file is read from the game's WindowZH.big; the result is written as a loose file into the game folder
+(loose files win over archives), so no original data is modified or redistributed.
 
   patch_options_wnd.py <GameDir>
 """
 import os, re, subprocess, sys, tempfile
 
+NL = chr(10)
 here = os.path.dirname(os.path.abspath(__file__))
 game = sys.argv[1]
 tmp = tempfile.mkdtemp()
@@ -17,42 +18,65 @@ for root, _, files in os.walk(tmp):
         if f.lower() == 'optionsmenu.wnd':
             src = os.path.join(root, f)
 text = open(src, encoding='latin-1', newline='').read()
-nl = '\r\n' if '\r\n' in text else '\n'
-text = text.replace('\r\n', '\n')
+nl = chr(13) + chr(10) if chr(13) + chr(10) in text else NL
+text = text.replace(chr(13) + chr(10), NL)
 
-def shift_window(t, name_or_rect, dy):
+RECT = r'UPPERLEFT: \d+ \d+,\s*BOTTOMRIGHT: \d+ \d+,'
+
+
+def shift_window(t, xy, dy):
     """shift the window whose SCREENRECT upper-left is (x, y) by dy"""
-    x, y = name_or_rect
+    x, y = xy
     pat = re.compile(r'(SCREENRECT = UPPERLEFT: %d )(%d)(,\s*BOTTOMRIGHT: \d+ )(\d+)(,)' % (x, y))
-    assert pat.search(t), name_or_rect
+    assert pat.search(t), xy
     return pat.sub(lambda m: '%s%d%s%d%s' % (m.group(1), int(m.group(2)) + dy, m.group(3), int(m.group(4)) + dy, m.group(5)), t, count=1)
 
-# make room: low-res texture block moves down 24, particle cap block 12
+
+# make room for the group below the original check boxes
 for rect in [(160, 312), (172, 315), (240, 355), (427, 375), (160, 342), (160, 375)]:
-    text = shift_window(text, rect, 24)
+    text = shift_window(text, rect, 60)
 for rect in [(160, 416), (172, 419), (160, 476), (412, 476), (160, 445), (240, 459)]:
-    text = shift_window(text, rect, 12)
+    text = shift_window(text, rect, 48)
+for rect in [(295, 521), (466, 521)]:
+    text = shift_window(text, rect, 36)
+text = re.sub(r'(SCREENRECT = UPPERLEFT: 151 68,\s*BOTTOMRIGHT: 636 )560', r'\g<1>596', text, count=1)
+text = re.sub(r'(SCREENRECT = UPPERLEFT: 160 112,\s*BOTTOMRIGHT: 622 )301', r'\g<1>380', text, count=1)
 
-# the container of the check boxes has to cover the new rows
-text = re.sub(r'(SCREENRECT = UPPERLEFT: 160 112,\s*BOTTOMRIGHT: 622 )301', r'\g<1>340', text, count=1)
 
-# clone the "smooth water" check box for the new ones
-i = text.index('NAME = "OptionsMenu.wnd:CheckSmoothWater"')
-start = text.rfind('          WINDOW', 0, i)
-start = text.rfind('          CHILD', 0, start)
-end = text.index('          END', i) + len('          END')
-block = text[start:end + 1]
-new_blocks = ''
-for name, x, y, w in [('CheckAmbientOcclusion', 168, 264, 200), ('CheckBloom', 168, 288, 200), ('CheckFXAA', 384, 288, 230)]:
-    b = block
-    b = re.sub(r'UPPERLEFT: \d+ \d+,\s*BOTTOMRIGHT: \d+ \d+,', 'UPPERLEFT: %d %d,\n                         BOTTOMRIGHT: %d %d,' % (x, y, x + w, y + 24), b, count=1)
-    b = b.replace('OptionsMenu.wnd:CheckSmoothWater', 'OptionsMenu.wnd:' + name)
+def block_around(t, index):
+    start = t.rfind('          WINDOW', 0, index)
+    start = t.rfind('          CHILD', 0, start)
+    end = t.index('          END', index) + len('          END')
+    return start, end + 1
+
+
+def clone(t, find_text, new_name, x, y, w, h):
+    start, end = block_around(t, t.index(find_text))
+    b = t[start:end]
+    b = re.sub(RECT, 'UPPERLEFT: %d %d,' % (x, y) + NL + '                         BOTTOMRIGHT: %d %d,' % (x + w, y + h), b, count=1)
+    b = re.sub(r'NAME = "[^"]*";', 'NAME = "OptionsMenu.wnd:%s";' % new_name, b, count=1)
     b = re.sub(r'TOOLTIPTEXT = "[^"]*"', 'TOOLTIPTEXT = ""', b)
-    b = re.sub(r'(?m)^(\s*)TEXT = "[^"]*";', r'\1TEXT = "GUI:Shadows3D";', b)		# any valid key: the real label is set by the game code
-    new_blocks += b
-text = text[:end + 1] + new_blocks + text[end + 1:]
+    # any valid string key: the real labels are set by the game code
+    b = re.sub(r'(?m)^(\s*)TEXT = "[^"]*";', lambda m: m.group(1) + 'TEXT = "GUI:Shadows3D";', b)
+    return end, b
+
+
+new_blocks = ''
+anchor = None
+# header: a static text cloned from the one above the original check boxes
+hdr_find = 'UPPERLEFT: 167 112'
+hs, he = block_around(text, text.index(hdr_find))
+_, blk = clone(text, hdr_find, 'EnhancementsHeader', 160, 298, 462, 24)
+new_blocks += blk
+# check boxes cloned from "smooth water"
+cb_find = 'NAME = "OptionsMenu.wnd:CheckSmoothWater"'
+for name, x, y in [('CheckSoftShadows', 168, 324), ('CheckAmbientOcclusion', 322, 324), ('CheckBloom', 476, 324),
+                   ('CheckFXAA', 168, 348), ('CheckUpdatedWater', 322, 348), ('CheckShockwaves', 476, 348)]:
+    anchor, blk = clone(text, cb_find, name, x, y, 150, 24)
+    new_blocks += blk
+text = text[:anchor] + new_blocks + text[anchor:]
 
 out = os.path.join(game, 'Window', 'Menus')
 os.makedirs(out, exist_ok=True)
-open(os.path.join(out, 'OptionsMenu.wnd'), 'w', encoding='latin-1', newline='').write(text.replace('\n', nl))
+open(os.path.join(out, 'OptionsMenu.wnd'), 'w', encoding='latin-1', newline='').write(text.replace(NL, nl))
 print('wrote', os.path.join(out, 'OptionsMenu.wnd'))
