@@ -8,7 +8,7 @@
     <GameDir>\x64\generalszh64.exe          the game
     <GameDir>\x64\*.dll (FFmpeg, zlib)      next to the exe, from the build output
     <GameDir>\x64\d3d8.dll d3d9.dll dxgi.dll the patched DXVK from tools\dxvk\build-dxvk.ps1 (Direct3D 8 -> Vulkan)
-    <GameDir>\Play-x64.bat, Play-x64-Fullscreen.bat
+    <GameDir>\Play-Updated.bat, Play-Original.bat
   Existing files of the original game are never touched. Delete the x64 folder and the two .bat files to uninstall.
 
 .EXAMPLE
@@ -47,8 +47,10 @@ rem 64-bit Zero Hour from this repository. -useCwd keeps this folder as the work
 rem (loose Data\Cursors and Data\Movies are read from here).
 cd /d "%~dp0"
 "@
-Set-Content (Join-Path $GameDir "Play-x64.bat") ($common + "`r`n`"%~dp0x64\generalszh64.exe`" -useCwd -win$modArg %*`r`n") -Encoding ASCII
-Set-Content (Join-Path $GameDir "Play-x64-Fullscreen.bat") ($common + "`r`n`"%~dp0x64\generalszh64.exe`" -useCwd$modArg %*`r`n") -Encoding ASCII
+# two launchers: updated graphics (default) and the original rendering; older launchers are removed
+foreach ($old in "Play-x64.bat", "Play-x64-Fullscreen.bat", "Play-x64-Vulkan.bat", "Start_Native_Vulkan.bat") { Remove-Item (Join-Path $GameDir $old) -ErrorAction SilentlyContinue }
+Set-Content (Join-Path $GameDir "Play-Updated.bat") ($common + "`r`nrem Updated graphics: native Vulkan renderer with all enhancements (Options.ini can switch single effects off).`r`n`"%~dp0x64\generalszh64.exe`" -useCwd -win$modArg %*`r`n") -Encoding ASCII
+Set-Content (Join-Path $GameDir "Play-Original.bat") ($common + "`r`nrem Original rendering: Direct3D 8 through DXVK, no added effects (also no updated water or shockwaves).`r`nset GENERALS_GFX=d3d8`r`nset GENERALS_ORIGINAL=1`r`n`"%~dp0x64\generalszh64.exe`" -useCwd -win$modArg %*`r`n") -Encoding ASCII
 
 # extra check boxes in the options menu (advanced pane): patched copy of the game's OptionsMenu.wnd, written as a loose file
 if (Get-Command python -ErrorAction SilentlyContinue) {
@@ -57,5 +59,5 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
     Write-Host "Python not found: the extra graphics check boxes in the options menu were not installed (the Options.ini keys still work)."
 }
 
-Write-Host "Installed to $x64. Start the game with Play-x64.bat (windowed) or Play-x64-Fullscreen.bat."
+Write-Host "Installed to $x64. Start the game with Play-Updated.bat or Play-Original.bat (both windowed: remove -win in the .bat for fullscreen)."
 Write-Host "Set the resolution in the in-game options or in Options.ini (see README). Rendering is uncapped by default; FPSLimit = yes in Options.ini restores the 30 fps cap."

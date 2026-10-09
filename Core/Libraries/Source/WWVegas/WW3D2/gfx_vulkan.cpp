@@ -1946,7 +1946,6 @@ void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ)
 	}
 	g_sh.casters.clear();
 	B.projCaptured = false;
-	{ static int n = 0; if (n++ < 3) Log("BeginScene3D: ready %d post %d hdr %d stage %d", (int)B.ready, (int)B.postOn, B.hdr != nullptr, B.stage); }
 	if (!B.ready || !B.postOn || !B.hdr || B.stage == 0) return;
 	EndPass();
 	B.stage = 0; B.scene3D = true; B.colorLoaded = false; B.depthLoaded = false;

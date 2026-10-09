@@ -158,19 +158,21 @@ This only **adds** things:
 <GameDir>\x64\generalszh64.exe            the game you built
 <GameDir>\x64\avcodec-*.dll ... z.dll      FFmpeg and zlib, from the build output
 <GameDir>\x64\d3d8.dll d3d9.dll dxgi.dll   the patched DXVK (used by the Classic renderer)
-<GameDir>\Play-x64.bat                    windowed launcher
-<GameDir>\Play-x64-Fullscreen.bat         fullscreen launcher
+<GameDir>\Play-Updated.bat                updated graphics (native Vulkan renderer, all enhancements)
+<GameDir>\Play-Original.bat               original rendering (Direct3D 8 on DXVK, no added effects)
 ```
 
-Nothing of the original game is modified. To uninstall, delete the `x64` folder and the two `.bat` files. Start the game
+Nothing of the original game is modified. The install script also removes older launcher files (`Play-x64*.bat`). To uninstall, delete the `x64` folder, the two `.bat` files and the loose `Window` folder. Start the game
 through the `.bat` files (or with the same arguments): they set the working directory and `-useCwd`, which the executable
 needs to find loose `Data\Cursors` and `Data\Movies`. Do not copy `generalszh64.exe` over the original `generalszh.exe`.
 
 ## Running
 
-`Play-x64.bat` starts windowed, `Play-x64-Fullscreen.bat` fullscreen. Extra arguments are passed through, for example
-`Play-x64.bat -xres 1920 -yres 1080`. The enhanced renderer is used unless you choose otherwise (see below). A log of the
-native renderer is written to `gfx_vulkan.log` in the game folder.
+`Play-Updated.bat` starts the game with the updated graphics (native Vulkan renderer, all enhancements, the settings of `Options.ini` apply).
+`Play-Original.bat` starts it with the original rendering: Direct3D 8 on DXVK and none of the added effects, including the updated water and the
+shockwaves (it sets `GENERALS_GFX=d3d8` and `GENERALS_ORIGINAL=1`). Both start windowed (`-win`); remove that word inside the `.bat` for fullscreen.
+Extra arguments are passed through, for example `Play-Updated.bat -xres 1920 -yres 1080`. A log of the native renderer is written to
+`gfx_vulkan.log` in the game folder.
 
 ## All settings and flags
 
@@ -211,6 +213,7 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 
 | Variable | Effect |
 |---|---|
+| `GENERALS_ORIGINAL` | any value: no updated water, no shockwaves (used by `Play-Original.bat`). |
 | `GENERALS_GFX` | `vulkan` forces the native renderer, `null` runs without any output (test mode); any other non-empty value forces Classic. |
 | `GENERALS_POST` | `0` disables the post processing chain (and so shadows), `1` enables it. |
 | `GENERALS_SHADOWS` | `0` disables shadows. |
@@ -347,12 +350,12 @@ Notes from the author's own experience, not a help desk.
 
 | Symptom | Likely cause |
 |---|---|
-| "DirectX 8 not available" at start | You started an exe without the DXVK DLLs next to it, in Classic mode. Use the launchers. |
+| "DirectX 8 not available" at start | You started an exe without the DXVK DLLs next to it, in Classic mode. Use the `.bat` launchers. |
 | Black screen or hang in fullscreen | Unsupported exclusive-fullscreen resolution. Try windowed or a native resolution. |
 | Something looks wrong in the enhanced renderer | Try `GraphicsMode = classic`, or turn single effects off (`SoftShadows`, `AmbientOcclusion`, `Bloom`, `AntiAliasingFXAA`, `PostProcessing`). Look into `gfx_vulkan.log`. |
 | It runs Classic although you did not ask | The Vulkan driver is older than 1.3 or `vulkan-1.dll` is missing. |
 | Magenta/missing textures | An old build without the DDS header fix, or damaged game archives. |
-| No cursor | The game was not started with `-useCwd`. Use the launchers. |
+| No cursor | The game was not started with `-useCwd`. Use the `.bat` launchers. |
 | No videos | Built without `-Video`, or the FFmpeg DLLs are not in the `x64` folder. |
 | Stuck at 30 fps | `Options.ini` contains `FPSLimit = yes`. |
 | Language/path empty after reinstalling | The game is registered in a registry location the lookup does not know. Check the `WOW6432Node` entry. |

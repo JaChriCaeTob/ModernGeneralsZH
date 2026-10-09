@@ -664,6 +664,8 @@ Bool OptionPreferences::getDynamicLODEnabled()
 
 Bool OptionPreferences::getUpdatedWaterEnabled()
 {
+	if (GetEnvironmentVariableA("GENERALS_ORIGINAL", nullptr, 0) > 0)	// Play-Original.bat: no added effects at all
+		return FALSE;
 	OptionPreferences::const_iterator it = find("UpdatedWater");
 	if (it == end())
 		return TRUE;
@@ -673,6 +675,8 @@ Bool OptionPreferences::getUpdatedWaterEnabled()
 
 Bool OptionPreferences::getWaterReflectionsEnabled()
 {
+	if (GetEnvironmentVariableA("GENERALS_ORIGINAL", nullptr, 0) > 0)	// Play-Original.bat: no added effects at all
+		return FALSE;
 	OptionPreferences::const_iterator it = find("WaterReflections");
 	if (it == end())
 		return TRUE;
@@ -682,6 +686,8 @@ Bool OptionPreferences::getWaterReflectionsEnabled()
 
 Bool OptionPreferences::getShockwavesEnabled()
 {
+	if (GetEnvironmentVariableA("GENERALS_ORIGINAL", nullptr, 0) > 0)	// Play-Original.bat: no added effects at all
+		return FALSE;
 	OptionPreferences::const_iterator it = find("Shockwaves");
 	if (it == end())
 		return TRUE;
