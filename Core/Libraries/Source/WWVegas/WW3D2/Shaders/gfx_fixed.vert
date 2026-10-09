@@ -129,9 +129,9 @@ void main()
 		if (draw.pointScale.w != 0.0)
 		{
 			float d = length((draw.worldView * vec4(inPos.xyz, 1.0)).xyz);
-			size = 0.5 * draw.alphaRef.y * size * inversesqrt(max(draw.pointScale.x + draw.pointScale.y * d + draw.pointScale.z * d * d, 1e-6));
+			size = 0.35 * draw.alphaRef.y * size * inversesqrt(max(draw.pointScale.x + draw.pointScale.y * d + draw.pointScale.z * d * d, 1e-6));
 		}
-		gl_PointSize = clamp(size, max(draw.pointParams.y, 1.0), max(draw.pointParams.z, 1.0));
+		gl_PointSize = clamp(size, max(draw.pointParams.y, 1.0), min(max(draw.pointParams.z, 1.0), max(0.011 * draw.alphaRef.y, 8.0)));		// never bigger than about 1.1% of the view height
 		if (draw.lightFlags.x != 0u)
 			vDiffuse = lit((draw.world * vec4(inPos.xyz, 1.0)).xyz, mat3(draw.world) * inNormal.xyz);
 	}
