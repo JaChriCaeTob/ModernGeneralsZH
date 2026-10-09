@@ -158,22 +158,25 @@ void main()
 	vec3 scene = texture(sceneMap, refractUV).rgb;
 
 	// ---- caustics on the seabed: bright light lines in the shallows
-	float causticMask = sat(1.0 - depth / 5.0) * sat(depth * 3.0);
-	float cau = caustic(world * 0.045 + slope * 0.4, t * 0.55) * causticMask;
-	scene += cau * vec3(0.55, 0.85, 0.80) * (0.5 + 0.5 * sunUp) * 1.4;
+	float causticMask = sat(1.0 - depth / 5.5) * sat(depth * 3.0);
+	vec2 cw = world + (nA.rg - 0.5) * 55.0 + (nB.gb - 0.5) * 16.0;               // warped so the cell pattern never tiles visibly
+	vec2 cr = vec2(cw.x * 0.80 - cw.y * 0.60, cw.x * 0.60 + cw.y * 0.80);
+	float cau = caustic(cw * 0.034 + slope * 0.5, t * 0.50) * 0.65 + caustic(cr * 0.058 + 7.3, t * 0.75) * 0.45;
+	cau *= 0.35 + 1.1 * smoothstep(0.25, 0.75, nA.b * 0.6 + nB.r * 0.5);          // patches of strong and weak light
+	scene += cau * causticMask * vec3(0.50, 0.80, 0.76) * (0.5 + 0.5 * sunUp) * 1.1;
 
 	// ---- absorption: red is gone within a few units, blue survives; colours are deliberately saturated
-	vec3 absorb = vec3(0.48, 0.115, 0.050);
+	vec3 absorb = vec3(0.95, 0.24, 0.095);
 	float d = max(depth, 0.0);
-	vec3 transmit = exp(-absorb * d * 0.55);
-	float depthMix = 1.0 - exp(-d * 0.22);            // shallow turquoise to deep ocean blue over ~12 units
-	vec3 shallowCol = vec3(0.060, 0.760, 0.680);
-	vec3 midCol     = vec3(0.020, 0.380, 0.640);
+	vec3 transmit = exp(-absorb * d * 0.60) * 0.78;   // never fully see-through: the sea has body
+	float depthMix = 1.0 - exp(-d * 0.30);            // shallow turquoise to deep ocean blue over ~12 units
+	vec3 shallowCol = vec3(0.050, 0.700, 0.640);
+	vec3 midCol     = vec3(0.012, 0.330, 0.620);
 	vec3 deepCol    = vec3(0.004, 0.090, 0.340);
 	vec3 bodyCol = mix(mix(shallowCol, midCol, sat(depthMix * 2.0)), deepCol, sat(depthMix * 2.0 - 1.0));
 	vec3 waterTint = texture(waterMap, uvWater + slope * 0.02).rgb;
 	bodyCol *= mix(vec3(1.0), waterTint * 1.6, 0.12);
-	float waveShade = 0.80 + 0.45 * sat(dot(normal, sunCam));
+	float waveShade = (0.62 + 0.75 * sat(dot(normal, sunCam))) * (0.88 + 0.18 * heightSum);
 	vec3 color = scene * transmit + bodyCol * lightTint * waveShade * (1.0 - transmit);
 
 	// ---- subsurface scattering: sun shining through thin wave crests glows turquoise
@@ -181,7 +184,7 @@ void main()
 	color += vec3(0.05, 0.62, 0.50) * sss * 1.5 * sunUp * lightTint;
 
 	// ---- fresnel sky reflection with a horizon haze
-	float fresnel = 0.02 + 0.98 * pow(1.0 - cosView, 4.5);
+	float fresnel = 0.04 + 0.96 * pow(1.0 - cosView, 3.6);
 	vec3 reflected = reflect(incident, normal);
 	float skyUp = sat(dot(reflected, g_axisZ));
 	vec3 skyColor = mix(vec3(0.70, 0.82, 0.92), vec3(0.16, 0.38, 0.82), pow(skyUp, 0.55));
