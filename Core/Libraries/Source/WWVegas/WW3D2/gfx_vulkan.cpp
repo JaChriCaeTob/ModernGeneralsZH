@@ -1594,7 +1594,7 @@ private:
 	{
 		if (!B.ready || numVertices == 0) { ++g_cnt[12]; return D3D_OK; }
 		if (B.targetUnsupported) { ++g_cnt[1]; Note("skipped, render target cannot be drawn to", m_vertexShader); return D3D_OK; }
-		if (g_sh.suppress && !B.curTarget) return D3D_OK;
+		{ static const int d8 = getenv("GENERALS_SHDBG") ? atoi(getenv("GENERALS_SHDBG")) : 0; if (g_sh.suppress && !B.curTarget && !(d8 & 8) && m_renderStates[D3DRS_ALPHABLENDENABLE]) return D3D_OK; }		// the engine's decal shadows are blended draws; opaque draws in the same window are real models
 		const int waterKind = PixelShaderKind(m_pixelShader);
 		static const int dbg = getenv("GENERALS_SHDBG") ? atoi(getenv("GENERALS_SHDBG")) : 0;
 		if (!(dbg & 1) && m_renderStates[D3DRS_STENCILENABLE] && ShadowsEnabled() && B.stage == 0)
@@ -1904,7 +1904,10 @@ void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ)
 	if (!g_sh.haveSun)
 	{
 		// One fixed sun for the whole session: azimuth from the map's light the first time, elevation fixed. GENERALS_SUN="azimuth,elevation" (degrees) overrides.
-		float az = atan2f(sunY, sunX), el = 50.0f * 3.14159265f / 180.0f;
+		// random sun for every launch: any direction, 35 to 62 degrees high
+		srand((unsigned)GetTickCount() ^ (unsigned)GetCurrentProcessId() * 2654435761u);
+		float az = (float)(rand() % 3600) * 0.1f * 3.14159265f / 180.0f, el = (35.0f + (float)(rand() % 270) * 0.1f) * 3.14159265f / 180.0f;
+		(void)sunX; (void)sunY;
 		if (const char* e = getenv("GENERALS_SUN")) { float a = 0, b = 0; if (sscanf(e, "%f,%f", &a, &b) == 2) { az = a * 3.14159265f / 180.0f; el = b * 3.14159265f / 180.0f; } }
 		g_sh.sun[0] = cosf(el) * cosf(az); g_sh.sun[1] = cosf(el) * sinf(az); g_sh.sun[2] = sinf(el);
 		g_sh.haveSun = true;
