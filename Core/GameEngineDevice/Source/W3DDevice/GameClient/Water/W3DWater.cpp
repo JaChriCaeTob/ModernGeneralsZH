@@ -43,6 +43,7 @@
 #include "WW3D2/camera.h"
 #include "WW3D2/scene.h"
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/gfx_vulkan.h"
 #include "WW3D2/light.h"
 #include "d3dx8math.h"
 #include "WWLib/simplevec.h"
@@ -973,7 +974,8 @@ void WaterRenderObjClass::ReAcquireResources()
 	if (m_waterTrackSystem)
 		m_waterTrackSystem->ReAcquireResources();
 
-	if (W3DShaderManager::getChipset() >= DC_GENERIC_PIXEL_SHADER_1_1)
+	// The native Vulkan backend has no general pixel shader support but runs the updated water shaders.
+	if (W3DShaderManager::getChipset() >= DC_GENERIC_PIXEL_SHADER_1_1 || VkGfx_Requested())
 	{
 		ID3DXBuffer *compiledShader;
 		const char *shader =

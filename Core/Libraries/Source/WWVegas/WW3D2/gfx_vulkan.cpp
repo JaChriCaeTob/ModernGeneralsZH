@@ -68,7 +68,7 @@ void Log(const char* fmt, ...)
 	X(vkCreateDescriptorSetLayout) X(vkDestroyDescriptorSetLayout) X(vkCreatePipelineLayout) X(vkDestroyPipelineLayout) \
 	X(vkCreateShaderModule) X(vkDestroyShaderModule) X(vkCreateGraphicsPipelines) X(vkDestroyPipeline) X(vkCmdBeginRendering) \
 	X(vkCmdEndRendering) X(vkCmdBindPipeline) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdBindVertexBuffers) \
-	X(vkCmdBindIndexBuffer) X(vkCmdDrawIndexed) X(vkCmdDraw) X(vkCmdPipelineBarrier2) X(vkCmdCopyBufferToImage) X(vkCmdCopyImageToBuffer) \
+	X(vkCmdBindIndexBuffer) X(vkCmdDrawIndexed) X(vkCmdDraw) X(vkCmdPipelineBarrier2) X(vkCmdCopyBufferToImage) X(vkCmdCopyImageToBuffer) X(vkCmdCopyImage) \
 	X(vkCmdClearAttachments) X(vkCmdSetStencilReference)
 
 #define VKFN_DECLARE(n) PFN_##n n = nullptr;
@@ -116,6 +116,7 @@ struct PipeKey
 	uint32_t blendEnable = 0, srcBlend = 0, dstBlend = 0, blendOp = 0;
 	uint32_t depthTest = 0, depthWrite = 0, depthFunc = 0;
 	uint32_t cull = 0, colorMask = 0, pretransformed = 0;
+	uint32_t ps = 0;		// 0 fixed function, 1 updated river water, 2 updated sea water
 	uint32_t stencilEnable = 0, stencilFunc = 0, stencilFail = 0, stencilZFail = 0, stencilPass = 0, stencilMask = 0, stencilWriteMask = 0;
 	bool operator<(const PipeKey& o) const { return memcmp(this, &o, sizeof(*this)) < 0; }
 };
@@ -134,12 +135,12 @@ struct DrawUbo
 	uint32_t lightInfo[4];
 	float lightDiffuse[4][4], lightAmbient[4][4], lightPosType[4][4], lightDirRange[4][4], lightAtten[4][4];
 	float worldView[16];
-	float texMatrix[4][16];
-	uint32_t texGen[4][4];
+	float texMatrix[8][16];
+	uint32_t texGen[8][4];
 	float pointParams[4];
 	float pointScale[4];
 };
-static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 4 * 64 + 4 * 16 + 32, "DrawUbo must match the std140 block in the shaders");
+static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 + 8 * 16 + 32, "DrawUbo must match the std140 block in the shaders");
 
 uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
 
@@ -189,7 +190,7 @@ struct Backend
 
 	VkDescriptorSetLayout dsLayout = VK_NULL_HANDLE;
 	VkPipelineLayout pipeLayout = VK_NULL_HANDLE;
-	VkShaderModule vs = VK_NULL_HANDLE, fs = VK_NULL_HANDLE;
+	VkShaderModule vs = VK_NULL_HANDLE, fs = VK_NULL_HANDLE, fsWater[2] = {};
 	std::map<PipeKey, VkPipeline> pipelines;
 	std::map<uint64_t, VkSampler> samplers;
 
@@ -802,7 +803,7 @@ VkPipeline GetPipeline(const PipeKey& key)
 	dys.dynamicStateCount = 3; dys.pDynamicStates = dyn;
 	VkPipelineShaderStageCreateInfo stages[2] = { { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO }, { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO } };
 	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT; stages[0].module = B.vs; stages[0].pName = "main";
-	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = B.fs; stages[1].pName = "main";
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module = key.ps ? B.fsWater[key.ps - 1] : B.fs; stages[1].pName = "main";
 	VkFormat colorFormat = B.swapFormat;
 	VkPipelineRenderingCreateInfo ri{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 	ri.colorAttachmentCount = 1; ri.pColorAttachmentFormats = &colorFormat; ri.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; ri.stencilAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
@@ -905,11 +906,12 @@ bool CreateInstanceAndDevice(HWND window)
 	VKCHECK(vkCreateSemaphore(B.device, &sei, nullptr, &B.imageAvailable));
 
 	// pipeline layout: one push descriptor set (uniform block + 4 combined image samplers)
-	VkDescriptorSetLayoutBinding lb[5] = {};
+	VkDescriptorSetLayoutBinding lb[10] = {};
 	lb[0] = { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
-	for (uint32_t i = 1; i < 5; ++i) lb[i] = { i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+	for (uint32_t i = 1; i < 9; ++i) lb[i] = { i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+	lb[9] = { 9, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };		// pixel shader constants of the water shaders
 	VkDescriptorSetLayoutCreateInfo dli{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-	dli.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR; dli.bindingCount = 5; dli.pBindings = lb;
+	dli.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR; dli.bindingCount = 10; dli.pBindings = lb;
 	VKCHECK(vkCreateDescriptorSetLayout(B.device, &dli, nullptr, &B.dsLayout));
 	VkPipelineLayoutCreateInfo pli{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 	pli.setLayoutCount = 1; pli.pSetLayouts = &B.dsLayout;
@@ -919,6 +921,10 @@ bool CreateInstanceAndDevice(HWND window)
 	VKCHECK(vkCreateShaderModule(B.device, &smi, nullptr, &B.vs));
 	smi.codeSize = sizeof(g_gfxFixedFrag); smi.pCode = g_gfxFixedFrag;
 	VKCHECK(vkCreateShaderModule(B.device, &smi, nullptr, &B.fs));
+	smi.codeSize = sizeof(g_gfxWaterRiverFrag); smi.pCode = g_gfxWaterRiverFrag;
+	VKCHECK(vkCreateShaderModule(B.device, &smi, nullptr, &B.fsWater[0]));
+	smi.codeSize = sizeof(g_gfxWaterTrapezoidFrag); smi.pCode = g_gfxWaterTrapezoidFrag;
+	VKCHECK(vkCreateShaderModule(B.device, &smi, nullptr, &B.fsWater[1]));
 
 	// per frame ring buffer and the constant default vertex attributes
 	B.ringSize = 64ull * 1024 * 1024;
@@ -1209,6 +1215,31 @@ bool ReadBackBuffer(NullSurface* dst, RECT r)
 	return true;
 }
 
+// GPU side copy of the whole back buffer into a render target texture (used by the water shaders to refract the scene).
+bool CopyBackBufferToTexture(GpuTexture* g)
+{
+	struct RestoreTarget { GpuTexture* t; ~RestoreTarget() { B.curTarget = t; } } restoreTarget{ B.curTarget };
+	B.curTarget = nullptr;
+	if (!EnsureRendering())
+		return false;
+	EndPass();
+	VkImage src = B.swapImages[B.imageIndex];
+	ImageBarrier(B.cmd, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+	ImageBarrier(B.cmd, g->image, g->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+	VkImageCopy ic{};
+	ic.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }; ic.dstSubresource = ic.srcSubresource;
+	ic.extent = { std::min(B.extent.width, g->width), std::min(B.extent.height, g->height), 1 };
+	vkCmdCopyImage(B.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ic);
+	ImageBarrier(B.cmd, g->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+	ImageBarrier(B.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+	g->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; g->loaded = true;
+	return true;
+}
+
 // ---- the device -----------------------------------------------------------------------------------------------------------
 
 void Multiply(const float* a, const float* b, float* out)	// row-major 4x4: out = a * b
@@ -1280,6 +1311,37 @@ public:
 	STDMETHOD(SetPixelShader)(THIS_ DWORD h) override { m_pixelShader = h; return D3D_OK; }
 	STDMETHOD(GetPixelShader)(THIS_ DWORD* h) override { *h = m_pixelShader; return D3D_OK; }
 
+	// The updated water shaders (ps_3_0) are the only pixel shaders this backend runs; they are recognised by their bytecode and
+	// replaced by the GLSL port in Shaders/gfx_water.frag. The first one the engine creates is the river shader, the second the sea shader.
+	int PixelShaderKind(DWORD h) const { auto it = m_psKind.find(h); return it == m_psKind.end() ? 0 : it->second; }
+	STDMETHOD(CreatePixelShader)(THIS_ CONST DWORD* fn, DWORD* h) override
+	{
+		HRESULT hr = NullDevice::CreatePixelShader(fn, h);
+		if (fn && *fn == 0xFFFF0300u)
+		{
+			uint64_t hash = 1469598103934665603ull;
+			for (const DWORD* p = fn; *p != 0x0000FFFFu; )
+			{
+				hash = (hash ^ *p) * 1099511628211ull;
+				p += ((*p & 0xFFFF) == 0xFFFE) ? 1 + ((*p >> 16) & 0x7FFF) : 1 + ((*p >> 24) & 0xF);
+			}
+			static std::map<uint64_t, int> known;
+			auto it = known.find(hash);
+			if (it == known.end())
+				it = known.insert({ hash, (int)known.size() + 1 }).first;
+			if (it->second <= 2)
+				m_psKind[*h] = it->second;
+			Log("ps_3_0 shader %08X recognised as updated water kind %d", (unsigned)*h, it->second);
+		}
+		return hr;
+	}
+	STDMETHOD(DeletePixelShader)(THIS_ DWORD h) override { m_psKind.erase(h); return D3D_OK; }
+	STDMETHOD(SetPixelShaderConstant)(THIS_ DWORD reg, CONST void* data, DWORD count) override
+	{
+		if (data && reg < 32) memcpy(m_psConst[reg], data, std::min<size_t>(count, 32 - reg) * 16);
+		return D3D_OK;
+	}
+
 	void SyncTarget()
 	{
 		B.curTarget = nullptr; B.targetUnsupported = false;
@@ -1304,6 +1366,17 @@ public:
 	// reading the back buffer (heat haze, shockwave) needs the GPU contents
 	STDMETHOD(CopyRects)(THIS_ IDirect3DSurface8* src, CONST RECT* rects, UINT count, IDirect3DSurface8* dst, CONST POINT* points) override
 	{
+		if (src == static_cast<IDirect3DSurface8*>(m_back) && B.ready && dst)
+		{
+			NullSurface* d = static_cast<NullSurface*>(dst);
+			NullTexture* dt = d->m_texture ? (NullTexture*)d->m_texture : nullptr;
+			if (dt && (d->m_usage & D3DUSAGE_RENDERTARGET))
+			{
+				GpuTexture* g = EnsureGpuTexture(dt);
+				if (g && g->renderTarget && CopyBackBufferToTexture(g))
+					return D3D_OK;
+			}
+		}
 		if (src == static_cast<IDirect3DSurface8*>(m_back) || src == m_target)
 		{
 			NullSurface* s = static_cast<NullSurface*>(src);
@@ -1441,7 +1514,8 @@ private:
 	{
 		if (!B.ready || numVertices == 0) { ++g_cnt[12]; return D3D_OK; }
 		if (B.targetUnsupported) { ++g_cnt[1]; Note("skipped, render target cannot be drawn to", m_vertexShader); return D3D_OK; }
-		if (m_pixelShader != 0) { ++g_cnt[2]; Note("skipped, pixel shader", m_vertexShader); return D3D_OK; }
+		const int waterKind = PixelShaderKind(m_pixelShader);
+		if (m_pixelShader != 0 && !waterKind) { ++g_cnt[2]; Note("skipped, pixel shader", m_vertexShader); return D3D_OK; }
 		if ((m_vertexShader & 0x80000000u) || m_vertexShader == 0) { ++g_cnt[3]; Note("skipped, vertex shader", m_vertexShader); return D3D_OK; }
 		++g_cnt[0];
 		Note("drawn", m_vertexShader);
@@ -1522,7 +1596,7 @@ private:
 		}
 		memcpy(u.world, m_matrix[256], 64);
 		memcpy(u.worldView, wv, 64);
-		for (int s = 0; s < 4; ++s)
+		for (int s = 0; s < 8; ++s)
 		{
 			const DWORD index = m_stageStates[s][D3DTSS_TEXCOORDINDEX];
 			const DWORD flags = m_stageStates[s][D3DTSS_TEXTURETRANSFORMFLAGS];
@@ -1585,6 +1659,7 @@ private:
 			key.stencilZFail = m_renderStates[D3DRS_STENCILZFAIL]; key.stencilPass = m_renderStates[D3DRS_STENCILPASS];
 			key.stencilMask = m_renderStates[D3DRS_STENCILMASK]; key.stencilWriteMask = m_renderStates[D3DRS_STENCILWRITEMASK];
 		}
+		key.ps = (uint32_t)waterKind;
 		key.cull = m_renderStates[D3DRS_CULLMODE]; key.colorMask = m_renderStates[D3DRS_COLORWRITEENABLE] & 0xF;
 		VkPipeline pipe = GetPipeline(key);
 		if (!pipe) return D3D_OK;
@@ -1612,12 +1687,13 @@ private:
 		vkCmdSetStencilReference(B.cmd, VK_STENCIL_FACE_FRONT_AND_BACK, m_renderStates[D3DRS_STENCILREF]);
 
 		VkDescriptorBufferInfo ubo{ B.ring, uOff, sizeof(DrawUbo) };
-		VkDescriptorImageInfo imgs[4];
-		VkWriteDescriptorSet w[5] = {};
+		VkDescriptorImageInfo imgs[8];
+		VkWriteDescriptorSet w[10] = {};
+		const int stageCount = waterKind ? 7 : 4;
 		w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[0].pBufferInfo = &ubo;
-		for (int s = 0; s < 4; ++s)
+		for (int s = 0; s < stageCount; ++s)
 		{
-			GpuTexture* g = (m_tex[s] && u.stage[2 * s][0] != 1) ? EnsureGpuTexture(static_cast<NullTexture*>(m_tex[s])) : B.white;
+			GpuTexture* g = (m_tex[s] && (waterKind || u.stage[2 * s][0] != 1)) ? EnsureGpuTexture(static_cast<NullTexture*>(m_tex[s])) : B.white;
 			if (!g || g == B.passTarget) g = B.white;
 			const DWORD* t = m_stageStates[s];
 			imgs[s] = { GetSampler(t[D3DTSS_MINFILTER], t[D3DTSS_MAGFILTER], t[D3DTSS_MIPFILTER], t[D3DTSS_ADDRESSU] ? t[D3DTSS_ADDRESSU] : 1, t[D3DTSS_ADDRESSV] ? t[D3DTSS_ADDRESSV] : 1, t[D3DTSS_MAXANISOTROPY]),
@@ -1625,7 +1701,24 @@ private:
 			w[1 + s].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1 + s].dstBinding = 1 + s; w[1 + s].descriptorCount = 1;
 			w[1 + s].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[1 + s].pImageInfo = &imgs[s];
 		}
-		vkCmdPushDescriptorSetKHR(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, B.pipeLayout, 0, 5, w);
+		VkDescriptorBufferInfo psUbo{ B.ring, 0, 512 };
+		uint32_t writes = 1 + stageCount;
+		if (waterKind)
+		{
+			const VkDeviceSize pOff = ((B.ringCursor + B.uboAlign - 1) / B.uboAlign) * B.uboAlign;
+			if (pOff + 512 <= B.ringSize)
+			{
+				memcpy((char*)B.ringAlloc.mapped + pOff, m_psConst, 512);
+				B.ringCursor = pOff + 512;
+				psUbo.offset = pOff;
+				w[writes].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[writes].dstBinding = 9; w[writes].descriptorCount = 1;
+				w[writes].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[writes].pBufferInfo = &psUbo;
+				++writes;
+			}
+			else
+				return D3D_OK;
+		}
+		vkCmdPushDescriptorSetKHR(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, B.pipeLayout, 0, writes, w);
 
 		VkBuffer bufs[2] = { B.ring, B.defaults };
 		VkDeviceSize offs[2] = { vOff, 0 };
@@ -1649,6 +1742,8 @@ private:
 	NullIndexBuffer* m_ib = nullptr;
 	UINT m_stride = 0, m_baseVertex = 0;
 	DWORD m_vertexShader = 0, m_pixelShader = 0;
+	float m_psConst[32][4] = {};
+	std::map<DWORD, int> m_psKind;		// pixel shader handle -> 1 updated river water, 2 updated sea water
 };
 
 class VkD3D : public IDirect3D8NullBase

@@ -23,8 +23,8 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	vec4 lightDirRange[4]; // xyz: direction, w: range
 	vec4 lightAtten[4];    // attenuation 0, 1, 2
 	mat4 worldView;        // camera space position and normal for texture coordinate generation
-	mat4 texMatrix[4];     // texture transform of each stage (D3D row-major, read like wvp)
-	uvec4 texGen[4];       // per stage: x = source (0 vertex set, 1 camera normal, 2 camera position, 3 reflection), y = vertex set, z = transform count (0 off), w = 1 projected
+	mat4 texMatrix[8];     // texture transform of each stage (D3D row-major, read like wvp)
+	uvec4 texGen[8];       // per stage: x = source (0 vertex set, 1 camera normal, 2 camera position, 3 reflection), y = vertex set, z = transform count (0 off), w = 1 projected
 	vec4 pointParams;      // size, min size, max size, 1 when point sprites are on
 	vec4 pointScale;       // attenuation A, B, C, 1 when scaling is on
 } draw;
@@ -35,7 +35,7 @@ layout(set = 0, binding = 3) uniform sampler2D tex2;
 layout(set = 0, binding = 4) uniform sampler2D tex3;
 
 layout(location = 0) in vec4 vDiffuse;
-layout(location = 1) in vec4 vUv[4];
+layout(location = 1) in vec4 vUv[8];
 layout(location = 0) out vec4 outColor;
 
 vec4 sampleStage(uint i, vec4 uv)
