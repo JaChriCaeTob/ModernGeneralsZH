@@ -68,7 +68,7 @@ void Log(const char* fmt, ...)
 	X(vkCreateDescriptorSetLayout) X(vkDestroyDescriptorSetLayout) X(vkCreatePipelineLayout) X(vkDestroyPipelineLayout) \
 	X(vkCreateShaderModule) X(vkDestroyShaderModule) X(vkCreateGraphicsPipelines) X(vkDestroyPipeline) X(vkCmdBeginRendering) \
 	X(vkCmdEndRendering) X(vkCmdBindPipeline) X(vkCmdSetViewport) X(vkCmdSetScissor) X(vkCmdBindVertexBuffers) \
-	X(vkCmdBindIndexBuffer) X(vkCmdDrawIndexed) X(vkCmdDraw) X(vkCmdPipelineBarrier2) X(vkCmdCopyBufferToImage) \
+	X(vkCmdBindIndexBuffer) X(vkCmdDrawIndexed) X(vkCmdDraw) X(vkCmdPipelineBarrier2) X(vkCmdCopyBufferToImage) X(vkCmdCopyImageToBuffer) \
 	X(vkCmdClearAttachments) X(vkCmdSetStencilReference)
 
 #define VKFN_DECLARE(n) PFN_##n n = nullptr;
@@ -134,8 +134,10 @@ struct DrawUbo
 	float worldView[16];
 	float texMatrix[4][16];
 	uint32_t texGen[4][4];
+	float pointParams[4];
+	float pointScale[4];
 };
-static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 4 * 64 + 4 * 16, "DrawUbo must match the std140 block in the shaders");
+static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 4 * 64 + 4 * 16 + 32, "DrawUbo must match the std140 block in the shaders");
 
 uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
 
@@ -172,6 +174,11 @@ struct Backend
 	VkSemaphore imageAvailable = VK_NULL_HANDLE;
 	uint32_t imageIndex = 0;
 	bool acquired = false, rendering = false, cmdOpen = false;
+	bool colorLoaded = false;						// the frame already has content in the swapchain image (resume with load, not clear)
+	bool semaphoreUsed = false;						// imageAvailable was already waited on by an earlier submit of this frame
+	VkBuffer readBuf = VK_NULL_HANDLE;				// host visible destination of back buffer read backs
+	Allocation readAlloc;
+	VkDeviceSize readSize = 0;
 
 	VkDescriptorSetLayout dsLayout = VK_NULL_HANDLE;
 	VkPipelineLayout pipeLayout = VK_NULL_HANDLE;
@@ -832,7 +839,7 @@ bool CreateInstanceAndDevice(HWND window)
 	VkPhysicalDeviceVulkan13Features f13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
 	f13.dynamicRendering = VK_TRUE; f13.synchronization2 = VK_TRUE;
 	VkPhysicalDeviceFeatures2 f2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
-	f2.pNext = &f13; f2.features.samplerAnisotropy = B.features.samplerAnisotropy; f2.features.textureCompressionBC = B.features.textureCompressionBC;
+	f2.pNext = &f13; f2.features.samplerAnisotropy = B.features.samplerAnisotropy; f2.features.textureCompressionBC = B.features.textureCompressionBC; f2.features.largePoints = B.features.largePoints;
 	const char* devExt[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME };
 	VkDeviceCreateInfo dci{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	dci.pNext = &f2; dci.queueCreateInfoCount = 1; dci.pQueueCreateInfos = &qci; dci.enabledExtensionCount = 2; dci.ppEnabledExtensionNames = devExt;
@@ -920,17 +927,20 @@ bool EnsureRendering()
 		if (!B.acquired)
 			return false;
 	}
-	ImageBarrier(B.cmd, B.swapImages[B.imageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-	ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
-		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 0,
-		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+	const VkAttachmentLoadOp loadOp = B.colorLoaded ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
+	const VkImageLayout colorOld = B.colorLoaded ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+	const VkImageLayout depthOld = B.colorLoaded ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+	ImageBarrier(B.cmd, B.swapImages[B.imageIndex], colorOld, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, B.colorLoaded ? VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT : 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT);
+	ImageBarrier(B.cmd, B.depthImage, depthOld, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, B.colorLoaded ? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT : 0,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
 	VkRenderingAttachmentInfo color{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
 	color.imageView = B.swapViews[B.imageIndex]; color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; color.storeOp = VK_ATTACHMENT_STORE_OP_STORE; color.clearValue.color = { { 0.f, 0.f, 0.f, 1.f } };
+	color.loadOp = loadOp; color.storeOp = VK_ATTACHMENT_STORE_OP_STORE; color.clearValue.color = { { 0.f, 0.f, 0.f, 1.f } };
 	VkRenderingAttachmentInfo depth{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
 	depth.imageView = B.depthView; depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; depth.clearValue.depthStencil = { 1.0f, 0 };
+	depth.loadOp = loadOp; depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE; depth.clearValue.depthStencil = { 1.0f, 0 };
 	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	ri.renderArea = { { 0, 0 }, B.extent }; ri.layerCount = 1; ri.colorAttachmentCount = 1; ri.pColorAttachments = &color; ri.pDepthAttachment = &depth; ri.pStencilAttachment = &depth;
 	vkCmdBeginRendering(B.cmd, &ri);
@@ -973,6 +983,7 @@ void PresentFrame()
 	{
 		// minimised or the swapchain could not be made: just drop the frame's recorded work (uploads still have to happen)
 		FlushUploadsSync();
+		B.colorLoaded = false; B.semaphoreUsed = false;
 		vkEndCommandBuffer(B.cmd);
 		vkResetCommandBuffer(B.cmd, 0);
 		BeginCommandBuffer();
@@ -995,14 +1006,14 @@ void PresentFrame()
 	}
 	VkCommandBuffer submitted[2] = { B.uploadCmd, B.cmd };
 	VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
-	si.waitSemaphoreCount = 1; si.pWaitSemaphores = &B.imageAvailable; si.pWaitDstStageMask = &wait;
+	si.waitSemaphoreCount = B.semaphoreUsed ? 0 : 1; si.pWaitSemaphores = &B.imageAvailable; si.pWaitDstStageMask = &wait;
 	si.commandBufferCount = hasUploads ? 2 : 1; si.pCommandBuffers = hasUploads ? submitted : &B.cmd;
 	si.signalSemaphoreCount = 1; si.pSignalSemaphores = &B.renderDone[B.imageIndex];
 	VKCHECK(vkQueueSubmit(B.queue, 1, &si, B.frameFence));
 	VkPresentInfoKHR pi{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
 	pi.waitSemaphoreCount = 1; pi.pWaitSemaphores = &B.renderDone[B.imageIndex]; pi.swapchainCount = 1; pi.pSwapchains = &B.swapchain; pi.pImageIndices = &B.imageIndex;
 	VkResult pr = vkQueuePresentKHR(B.queue, &pi);
-	B.acquired = false;
+	B.acquired = false; B.colorLoaded = false; B.semaphoreUsed = false;
 
 	vkWaitForFences(B.device, 1, &B.frameFence, VK_TRUE, UINT64_MAX);
 	vkResetFences(B.device, 1, &B.frameFence);
@@ -1014,6 +1025,66 @@ void PresentFrame()
 	B.deferredTextures.clear();
 	if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
 		DestroySwapchain();
+}
+
+// Copies a rectangle of the current frame's colour image into a CPU surface (4 byte formats only). Ends the pass, runs the work recorded so far and
+// waits for it, like a Direct3D 8 read of the render target would; rendering then resumes on top of the existing content.
+bool ReadBackBuffer(NullSurface* dst, RECT r)
+{
+	if (!B.ready || !dst || BytesPerPixel(dst->m_format) != 4 || !EnsureRendering())
+		return false;
+	r.left = std::max<LONG>(r.left, 0); r.top = std::max<LONG>(r.top, 0);
+	r.right = std::min<LONG>(r.right, (LONG)std::min<UINT>(B.extent.width, dst->m_width));
+	r.bottom = std::min<LONG>(r.bottom, (LONG)std::min<UINT>(B.extent.height, dst->m_height));
+	const uint32_t w = (uint32_t)std::max<LONG>(r.right - r.left, 0), h = (uint32_t)std::max<LONG>(r.bottom - r.top, 0);
+	if (w == 0 || h == 0)
+		return false;
+	const VkDeviceSize need = (VkDeviceSize)w * h * 4;
+	if (B.readSize < need)
+	{
+		if (B.readBuf) { vkDestroyBuffer(B.device, B.readBuf, nullptr); Free(B.readAlloc); B.readBuf = VK_NULL_HANDLE; }
+		B.readSize = 0;
+		if (!CreateBuffer(need, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, B.readBuf, B.readAlloc))
+			return false;
+		B.readSize = need;
+	}
+	vkCmdEndRendering(B.cmd);
+	B.rendering = false;
+	VkImage img = B.swapImages[B.imageIndex];
+	ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+	VkBufferImageCopy bic{};
+	bic.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	bic.imageOffset = { (int32_t)r.left, (int32_t)r.top, 0 }; bic.imageExtent = { w, h, 1 };
+	vkCmdCopyImageToBuffer(B.cmd, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, B.readBuf, 1, &bic);
+	ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+	VKCHECK(vkEndCommandBuffer(B.cmd));
+	B.cmdOpen = false;
+
+	VkPipelineStageFlags wait = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	const bool hasUploads = B.uploadOpen;
+	if (hasUploads)
+	{
+		VKCHECK(vkEndCommandBuffer(B.uploadCmd));
+		B.uploadOpen = false;
+	}
+	VkCommandBuffer submitted[2] = { B.uploadCmd, B.cmd };
+	VkSubmitInfo si{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	si.waitSemaphoreCount = B.semaphoreUsed ? 0 : 1; si.pWaitSemaphores = &B.imageAvailable; si.pWaitDstStageMask = &wait;
+	si.commandBufferCount = hasUploads ? 2 : 1; si.pCommandBuffers = hasUploads ? submitted : &B.cmd;
+	VKCHECK(vkQueueSubmit(B.queue, 1, &si, B.frameFence));
+	B.semaphoreUsed = true; B.colorLoaded = true;
+	vkWaitForFences(B.device, 1, &B.frameFence, VK_TRUE, UINT64_MAX);
+	vkResetFences(B.device, 1, &B.frameFence);
+	vkResetCommandBuffer(B.cmd, 0);
+	BeginCommandBuffer();
+	FreeDeferredBuffers();
+
+	const uint8_t* src = (const uint8_t*)B.readAlloc.mapped;
+	for (uint32_t y = 0; y < h; ++y)
+		memcpy(dst->m_data.data() + (size_t)(r.top + y - 0) * dst->m_pitch + (size_t)r.left * 4, src + (size_t)y * w * 4, (size_t)w * 4);
+	return true;
 }
 
 // ---- the device -----------------------------------------------------------------------------------------------------------
@@ -1086,6 +1157,31 @@ public:
 	STDMETHOD(GetVertexShader)(THIS_ DWORD* h) override { *h = m_vertexShader; return D3D_OK; }
 	STDMETHOD(SetPixelShader)(THIS_ DWORD h) override { m_pixelShader = h; return D3D_OK; }
 	STDMETHOD(GetPixelShader)(THIS_ DWORD* h) override { *h = m_pixelShader; return D3D_OK; }
+
+	// reading the back buffer (heat haze, shockwave) needs the GPU contents
+	STDMETHOD(CopyRects)(THIS_ IDirect3DSurface8* src, CONST RECT* rects, UINT count, IDirect3DSurface8* dst, CONST POINT* points) override
+	{
+		if (src == static_cast<IDirect3DSurface8*>(m_back) || src == m_target)
+		{
+			NullSurface* s = static_cast<NullSurface*>(src);
+			if (s == m_back)
+			{
+				if (!rects || count == 0)
+					ReadBackBuffer(s, RECT{ 0, 0, (LONG)s->m_width, (LONG)s->m_height });
+				else
+				{
+					RECT all = rects[0];
+					for (UINT i = 1; i < count; ++i)
+					{
+						all.left = std::min(all.left, rects[i].left); all.top = std::min(all.top, rects[i].top);
+						all.right = std::max(all.right, rects[i].right); all.bottom = std::max(all.bottom, rects[i].bottom);
+					}
+					ReadBackBuffer(s, all);
+				}
+			}
+		}
+		return NullDevice::CopyRects(src, rects, count, dst, points);
+	}
 
 	// ---- frame
 	STDMETHOD(BeginScene)(THIS) override { return D3D_OK; }
@@ -1259,6 +1355,14 @@ private:
 		u.viewport[0] = 0; u.viewport[1] = 0; u.viewport[2] = (float)B.extent.width; u.viewport[3] = (float)B.extent.height;
 		const DWORD tf = m_renderStates[D3DRS_TEXTUREFACTOR];
 		u.textureFactor[0] = ((tf >> 16) & 255) / 255.f; u.textureFactor[1] = ((tf >> 8) & 255) / 255.f; u.textureFactor[2] = (tf & 255) / 255.f; u.textureFactor[3] = ((tf >> 24) & 255) / 255.f;
+		{
+			auto f = [&](D3DRENDERSTATETYPE s) { float v; DWORD d = m_renderStates[s]; memcpy(&v, &d, 4); return v; };
+			u.pointParams[0] = f(D3DRS_POINTSIZE); u.pointParams[1] = f(D3DRS_POINTSIZE_MIN); u.pointParams[2] = m_renderStates[D3DRS_POINTSIZE_MAX] ? f(D3DRS_POINTSIZE_MAX) : 64.0f;
+			u.pointParams[3] = m_renderStates[D3DRS_POINTSPRITEENABLE] ? 1.0f : 0.0f;
+			u.pointScale[0] = f(D3DRS_POINTSCALE_A); u.pointScale[1] = f(D3DRS_POINTSCALE_B); u.pointScale[2] = f(D3DRS_POINTSCALE_C);
+			u.pointScale[3] = m_renderStates[D3DRS_POINTSCALEENABLE] ? 1.0f : 0.0f;
+			if (u.pointParams[0] == 0.0f) u.pointParams[0] = 1.0f;
+		}
 		u.flags[0] = pretransformed ? 1 : 0;
 		u.flags[2] = m_renderStates[D3DRS_ALPHAFUNC]; u.flags[3] = m_renderStates[D3DRS_ALPHATESTENABLE] ? 1 : 0;
 		u.alphaRef[0] = (m_renderStates[D3DRS_ALPHAREF] & 255) / 255.f;

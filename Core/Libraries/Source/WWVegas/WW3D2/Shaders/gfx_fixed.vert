@@ -35,6 +35,8 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	mat4 worldView;        // camera space position and normal for texture coordinate generation
 	mat4 texMatrix[4];     // texture transform of each stage (D3D row-major, read like wvp)
 	uvec4 texGen[4];       // per stage: x = source (0 vertex set, 1 camera normal, 2 camera position, 3 reflection), y = vertex set, z = transform count (0 off), w = 1 projected
+	vec4 pointParams;      // size, min size, max size, 1 when point sprites are on
+	vec4 pointScale;       // attenuation A, B, C, 1 when scaling is on
 } draw;
 
 layout(location = 0) out vec4 vDiffuse;
@@ -111,13 +113,23 @@ void main()
 		float w = (inPos.w != 0.0) ? 1.0 / inPos.w : 1.0;
 		vec2 ndc = vec2((inPos.x - draw.viewport.x) * 2.0 / draw.viewport.z - 1.0,
 		                (inPos.y - draw.viewport.y) * 2.0 / draw.viewport.w - 1.0);
+		ndc += vec2(1.0 / draw.viewport.z, 1.0 / draw.viewport.w);		// Direct3D pixel centres lie on whole numbers, Vulkan's at +0.5
 		gl_Position = vec4(ndc * w, inPos.z * w, w);
+		gl_PointSize = 1.0;
 	}
 	else
 	{
 		vec4 p = draw.wvp * vec4(inPos.xyz, 1.0);
 		p.y = -p.y;     // Direct3D clip space has y up, Vulkan's points down
+		p.xy += vec2(1.0 / draw.viewport.z, 1.0 / draw.viewport.w) * p.w;
 		gl_Position = p;
+		float size = draw.pointParams.x;
+		if (draw.pointScale.w != 0.0)
+		{
+			float d = length((draw.worldView * vec4(inPos.xyz, 1.0)).xyz);
+			size = draw.viewport.w * size * inversesqrt(max(draw.pointScale.x + draw.pointScale.y * d + draw.pointScale.z * d * d, 1e-6));
+		}
+		gl_PointSize = clamp(size, max(draw.pointParams.y, 1.0), max(draw.pointParams.z, 1.0));
 		if (draw.lightFlags.x != 0u)
 			vDiffuse = lit((draw.world * vec4(inPos.xyz, 1.0)).xyz, mat3(draw.world) * inNormal.xyz);
 	}
