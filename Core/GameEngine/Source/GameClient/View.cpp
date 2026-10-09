@@ -27,6 +27,7 @@
 // Author: Michael S. Booth, February 2001
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#include "Common/OptionPreferences.h"
 
 #include "Common/GameEngine.h"
 #include "Common/Xfer.h"
@@ -96,6 +97,14 @@ void View::init()
 	m_zoomLimited = TRUE;
 
 	m_zoom = 1.0f;
+	{
+		// zoom-out limit: Options.ini key MaxCameraHeight (the game's own value is 310; this build allows 450 unless set)
+		OptionPreferences prefs;
+		OptionPreferences::const_iterator it = prefs.find("MaxCameraHeight");
+		const Real maxHeight = it != prefs.end() ? (Real)atof(it->second.str()) : 450.0f;
+		if (maxHeight > TheGlobalData->m_minCameraHeight)
+			TheWritableGlobalData->m_maxCameraHeight = maxHeight;
+	}
 	m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight;
 	m_minHeightAboveGround = TheGlobalData->m_minCameraHeight;
 	m_okToAdjustHeight = FALSE;

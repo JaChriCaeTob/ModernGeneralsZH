@@ -1689,6 +1689,7 @@ private:
 		u.flags[0] = pretransformed ? 1 : 0;
 		u.flags[2] = m_renderStates[D3DRS_ALPHAFUNC]; u.flags[3] = m_renderStates[D3DRS_ALPHATESTENABLE] ? 1 : 0;
 		u.alphaRef[0] = (m_renderStates[D3DRS_ALPHAREF] & 255) / 255.f;
+		u.alphaRef[1] = (float)m_viewport.Height;		// point sprite sizes scale with the viewport height
 		for (int s = 0; s < 4; ++s)
 		{
 			const DWORD* t = m_stageStates[s];

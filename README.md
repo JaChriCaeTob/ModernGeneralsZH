@@ -207,6 +207,7 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 | `Shockwaves` | `yes` | `no` = no shockwave ring on explosions. |
 | `HeatEffects` | game setting | `no` = no heat distortion (also in the game's options menu). |
 | `FPSLimit` | `no` (unlimited) | `yes` = the original 30 fps cap. The logic always runs at 30 Hz. |
+| `MaxCameraHeight` | `450` | How far the camera may zoom out (the game's own value is 310). Raise it for a wider view, set `310` for the original limit. |
 | `Resolution` | game default | Use a resolution your display really supports at fullscreen. |
 
 ### Environment variables (override Options.ini; mostly for development)
@@ -374,6 +375,7 @@ scripts/compile-shaders.ps1    recompile the classic water shaders (needs fxc.ex
 scripts/gen_null_stubs.py, scripts/callsites.py   helpers that generated parts of the backend interface
 tools/bigtool.py               list/extract EA .big archives
 tools/w3d_to_glb.py, tools/glb_to_w3d.py   convert W3D models to .glb for Blender and put an edited mesh back (see docs/MODELS.md)
+tools/find_model_users.py     which object (unit, building, projectile) uses a given model, searched in the extracted INI files
 tools/w3dlib.py                reading/writing the W3D chunks for those tools
 tools/w3d_sizes.py             size and triangle count of every mesh in a folder of W3D files (scale reference for new models)
 assets/Art/                    self-made replacement models and textures, copied into the game by the install script
