@@ -321,7 +321,7 @@ mod loaded with `-mod`. Only examined with a German install.
   not to touch the simulation, but this was never checked for lock-step play.
 - **Only Zero Hour is targeted.** The `Generals/` tree received only the minimum edits to keep it compiling in principle.
 - **One test machine.** Other GPUs/drivers may show glitches, especially in the native renderer.
-- **Native renderer gaps:** no programmable shaders other than the two water shaders, no fog, no cube/volume textures, no
+- **Native renderer gaps:** no programmable shaders other than the two water shaders, no fixed-function fog (the game keeps fog disabled everywhere), no cube/volume textures, no
   multisampling, no gamma ramp. Menus, HUD and the 3D game are covered; anything that needs those paths is skipped or looks
   different. If something looks wrong set `GraphicsMode = classic`.
 - **Post chain:** the ambient occlusion and shadow strengths are tuned by eye on a few maps. The shadow map covers the
