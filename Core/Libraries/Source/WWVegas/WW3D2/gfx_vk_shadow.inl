@@ -186,7 +186,8 @@ bool RenderShadowMap(const float* lightVP)
 GpuTexture* ShadowStage(const PostUbo& base)
 {
 	{ static int n = 0; if (n++ % 600 == 0) Log("shadow stage: enabled %d map %d vis %d casters %u proj %d depthTex %d sun %.2f %.2f %.2f ground %.1f", (int)ShadowsEnabled(), g_sh.map != nullptr, g_sh.vis != nullptr, (unsigned)g_sh.casters.size(), (int)B.haveProj, B.depthTex != nullptr, g_sh.sun[0], g_sh.sun[1], g_sh.sun[2], g_sh.groundZ); }
-	if (!ShadowsEnabled() || !g_sh.map || !g_sh.vis || g_sh.casters.empty() || !B.haveProj || !B.depthTex)
+	static const int dbg = getenv("GENERALS_SHDBG") ? atoi(getenv("GENERALS_SHDBG")) : 0;
+	if ((dbg & 4) || !ShadowsEnabled() || !g_sh.map || !g_sh.vis || g_sh.casters.empty() || !B.haveProj || !B.depthTex)
 		return nullptr;
 	float invView[16];
 	RigidInverse(B.lastView, invView);
@@ -197,6 +198,7 @@ GpuTexture* ShadowStage(const PostUbo& base)
 			if (c.groundZ > -500.0f && c.groundZ < 2000.0f && c.groundZ != 0.0f) { sum += c.groundZ; ++n; if (n >= 400) break; }
 		if (n) g_sh.groundZ = g_sh.groundZ * 0.9f + (float)(sum / n) * 0.1f;
 	}
+	{ static int k = 0; if (k++ % 300 == 0) { const float* P = B.lastProj; const float* V = B.lastView; Log("cam proj %.3f %.3f %.3f %.3f %.3f %.3f | view row3 %.1f %.1f %.1f | row0 %.2f %.2f %.2f row1 %.2f %.2f %.2f row2 %.2f %.2f %.2f", P[0], P[5], P[10], P[11], P[14], P[15], V[12], V[13], V[14], V[0], V[1], V[2], V[4], V[5], V[6], V[8], V[9], V[10]); } }
 	float vp[16], range, mapWorld;
 	if (!BuildLightMatrix(B.lastProj, invView, g_sh.groundZ, vp, range, mapWorld))
 		return nullptr;
@@ -206,7 +208,7 @@ GpuTexture* ShadowStage(const PostUbo& base)
 
 	PostUbo a = base;
 	a.proj[0] = B.lastProj[0]; a.proj[1] = B.lastProj[5]; a.proj[2] = B.lastProj[10]; a.proj[3] = B.lastProj[14];
-	a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f;
+	a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f; memcpy(a.viewRect, B.lastViewport, 16);
 	memcpy(a.invView, invView, 64);
 	memcpy(a.lightVP, vp, 64);
 	a.shadowParams[0] = (float)g_sh.mapSize; a.shadowParams[1] = g_sh.lightSize; a.shadowParams[2] = range; a.shadowParams[3] = mapWorld;

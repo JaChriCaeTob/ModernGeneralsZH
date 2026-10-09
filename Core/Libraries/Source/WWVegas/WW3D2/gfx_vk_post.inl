@@ -21,6 +21,7 @@ struct PostUbo
 	float lightVP[16];
 	float sunDir[4];
 	float shadowParams[4];
+	float viewRect[4];		// x, y, width, height in pixels of the viewport the 3D scene was drawn with
 };
 
 void Multiply(const float* a, const float* b, float* out)	// row-major 4x4: out = a * b
@@ -48,6 +49,7 @@ struct ShadowState
 	bool on = true;
 	float sun[3] = { 0.45f, 0.45f, 0.77f };		// world space direction towards the sun
 	bool haveSun = false;
+	bool suppress = false;
 	std::vector<ShadowCaster> casters;
 	float groundZ = 0.0f;
 	float lightVP[16] = {};
@@ -310,7 +312,7 @@ bool RunPostProcess()
 	{
 		PostUbo a = ub;
 		a.proj[0] = B.lastProj[0]; a.proj[1] = B.lastProj[5]; a.proj[2] = B.lastProj[10]; a.proj[3] = B.lastProj[14];
-		a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f;
+		a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f; memcpy(a.viewRect, B.lastViewport, 16);
 		a.p1[2] = g_postCfg.aoStrength; a.p1[3] = g_postCfg.aoRadius;
 		GpuTexture* inD[4] = { B.depthTex, nullptr, nullptr, nullptr };
 		PostDraw(PASS_AO, false, inD, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);

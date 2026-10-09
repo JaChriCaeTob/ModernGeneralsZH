@@ -188,6 +188,7 @@ struct Backend
 	// HDR scene and post processing (gfx_vk_post.inl)
 	GpuTexture* hdr = nullptr; GpuTexture* ldr = nullptr; GpuTexture* bloom[5] = {};
 	GpuTexture* ao[2] = {}; GpuTexture* depthTex = nullptr; VkImageView depthSampleView = VK_NULL_HANDLE;
+	float lastViewport[4] = {};
 	float lastProj[16] = {}, lastView[16] = {}; bool haveProj = false;
 	VkShaderModule postVs = VK_NULL_HANDLE, postFs[8] = {};
 	std::map<uint64_t, VkPipeline> postPipes;
@@ -1593,8 +1594,10 @@ private:
 	{
 		if (!B.ready || numVertices == 0) { ++g_cnt[12]; return D3D_OK; }
 		if (B.targetUnsupported) { ++g_cnt[1]; Note("skipped, render target cannot be drawn to", m_vertexShader); return D3D_OK; }
+		if (g_sh.suppress && !B.curTarget) return D3D_OK;
 		const int waterKind = PixelShaderKind(m_pixelShader);
-		if (m_renderStates[D3DRS_STENCILENABLE] && ShadowsEnabled() && B.stage == 0)
+		static const int dbg = getenv("GENERALS_SHDBG") ? atoi(getenv("GENERALS_SHDBG")) : 0;
+		if (!(dbg & 1) && m_renderStates[D3DRS_STENCILENABLE] && ShadowsEnabled() && B.stage == 0)
 		{
 			// shadow volumes (no colour, or position only vertices) and the full screen darkening quad belong to the stencil shadows; models that only have stencil on stay
 			const DWORD cm = m_renderStates[D3DRS_COLORWRITEENABLE];
@@ -1618,6 +1621,7 @@ private:
 			if (B.stage == 0 && !B.projCaptured && m_renderStates[D3DRS_ZWRITEENABLE] && !m_renderStates[D3DRS_ALPHABLENDENABLE] && numVertices > 8)
 			{
 				B.haveProj = true; B.projCaptured = true; memcpy(B.lastProj, m_matrix[3], 64); memcpy(B.lastView, m_matrix[2], 64);
+				B.lastViewport[0] = (float)m_viewport.X; B.lastViewport[1] = (float)m_viewport.Y; B.lastViewport[2] = (float)m_viewport.Width; B.lastViewport[3] = (float)m_viewport.Height;
 			}
 		}
 		const UINT stride = m_stride ? m_stride : 16;
@@ -1761,7 +1765,13 @@ private:
 		key.cull = m_renderStates[D3DRS_CULLMODE]; key.colorMask = m_renderStates[D3DRS_COLORWRITEENABLE] & 0xF;
 		VkPipeline pipe = GetPipeline(key);
 		if (!pipe) return D3D_OK;
-		if (B.stage == 0 && !B.curTarget && !pretransformed && !waterKind && ShadowsEnabled() && key.depthWrite && !key.blendEnable && !key.stencilEnable && key.colorMask
+		if (B.stage == 0 && !B.curTarget && !pretransformed && !waterKind && ShadowsEnabled())
+		{
+			static uint32_t cnt[8]; static int n = 0;
+			++cnt[0]; if (!key.depthWrite) ++cnt[1]; if (key.blendEnable) ++cnt[2]; if (key.stencilEnable) ++cnt[3]; if (!key.colorMask) ++cnt[4]; if (key.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST && key.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP) ++cnt[5];
+			if (++n % 3000 == 0) Log("scene draws %u: no zwrite %u, blend %u, stencil %u, no colour %u, other topology %u", cnt[0], cnt[1], cnt[2], cnt[3], cnt[4], cnt[5]);
+		}
+		if (!(dbg & 2) && B.stage == 0 && !B.curTarget && !pretransformed && !waterKind && ShadowsEnabled() && key.depthWrite && !key.blendEnable && key.colorMask
 			&& (key.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST || key.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP))
 		{
 			GpuTexture* t0 = (m_tex[0] && u.flags[3]) ? EnsureGpuTexture(static_cast<NullTexture*>(m_tex[0])) : nullptr;
@@ -1891,7 +1901,14 @@ IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT)
 // through the post processing chain; the interface drawn afterwards goes straight onto the swapchain and stays sharp.
 void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ)
 {
-	{ const float l = sqrtf(sunX * sunX + sunY * sunY + sunZ * sunZ); if (l > 0.001f) { g_sh.sun[0] = sunX / l; g_sh.sun[1] = sunY / l; g_sh.sun[2] = sunZ / l; g_sh.haveSun = true; } }
+	if (!g_sh.haveSun)
+	{
+		// One fixed sun for the whole session: azimuth from the map's light the first time, elevation fixed. GENERALS_SUN="azimuth,elevation" (degrees) overrides.
+		float az = atan2f(sunY, sunX), el = 50.0f * 3.14159265f / 180.0f;
+		if (const char* e = getenv("GENERALS_SUN")) { float a = 0, b = 0; if (sscanf(e, "%f,%f", &a, &b) == 2) { az = a * 3.14159265f / 180.0f; el = b * 3.14159265f / 180.0f; } }
+		g_sh.sun[0] = cosf(el) * cosf(az); g_sh.sun[1] = cosf(el) * sinf(az); g_sh.sun[2] = sinf(el);
+		g_sh.haveSun = true;
+	}
 	g_sh.casters.clear();
 	B.projCaptured = false;
 	{ static int n = 0; if (n++ < 3) Log("BeginScene3D: ready %d post %d hdr %d stage %d", (int)B.ready, (int)B.postOn, B.hdr != nullptr, B.stage); }
@@ -1900,6 +1917,7 @@ void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ)
 	B.stage = 0; B.scene3D = true; B.colorLoaded = false; B.depthLoaded = false;
 }
 bool VkGfx_ShadowMapsActive() { return g_sh.on && B.postOn && B.ready; }
+void VkGfx_SuppressSceneDraws(bool s) { g_sh.suppress = s; }
 void VkGfx_EndScene3D()
 {
 	if (!B.ready || !B.postOn || B.stage != 0) return;
@@ -1912,6 +1930,7 @@ bool VkGfx_Requested() { return false; }
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT) { return nullptr; }
 void VkGfx_BeginScene3D(float, float, float) {}
 bool VkGfx_ShadowMapsActive() { return false; }
+void VkGfx_SuppressSceneDraws(bool) {}
 void VkGfx_EndScene3D() {}
 
 #endif

@@ -17,6 +17,7 @@ layout(std140, set = 0, binding = 0) uniform Post
 	mat4 lightVP;       // world space to shadow map clip space
 	vec4 sunDir;        // world space direction towards the sun
 	vec4 shadowParams;  // shadow map size, light size, bias, unused
+	vec4 viewRect;      // viewport of the 3D scene in pixels
 } u;
 
 layout(set = 0, binding = 1) uniform sampler2D t0;
@@ -37,7 +38,8 @@ float viewZ(float d) { return u.proj.w / (u.p2.w * d - u.proj.z); }
 vec3 viewPos(vec2 p)
 {
 	float z = viewZ(texture(t0, p).r);
-	vec2 ndc = vec2(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0);
+	vec2 pix = p * u.texel.zw;
+	vec2 ndc = vec2((pix.x - u.viewRect.x) / u.viewRect.z * 2.0 - 1.0, 1.0 - (pix.y - u.viewRect.y) / u.viewRect.w * 2.0);
 	return vec3(ndc.x * u.p2.w * z / u.proj.x, ndc.y * u.p2.w * z / u.proj.y, z);
 }
 

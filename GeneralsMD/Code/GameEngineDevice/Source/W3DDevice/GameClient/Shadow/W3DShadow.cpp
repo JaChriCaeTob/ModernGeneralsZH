@@ -74,12 +74,6 @@ void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
 {
 	//USE_PERF_TIMER(shadowsRender)
 	// With the native Vulkan backend's shadow maps the stencil volumes and decal shadows are not drawn at all.
-	if (VkGfx_ShadowMapsActive())
-	{
-		if (TheW3DShadowManager && stencilPass)
-			TheW3DShadowManager->queueShadows(FALSE);
-		return;
-	}
 	shadowCameraFrustum=&rinfo.Camera.Get_Frustum();
 	Int projectionCount=0;
 
@@ -88,7 +82,11 @@ void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
 	if (stencilPass == FALSE  && TheW3DProjectedShadowManager)
 	{
 			if (TheW3DShadowManager->isShadowScene())
+			{
+				VkGfx_SuppressSceneDraws(VkGfx_ShadowMapsActive());
 				projectionCount=TheW3DProjectedShadowManager->renderShadows(rinfo);
+				VkGfx_SuppressSceneDraws(false);
+			}
 	}
 
 	if (stencilPass == TRUE && TheW3DVolumetricShadowManager)
@@ -99,7 +97,11 @@ void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
 			//This function gets called many times by the W3D renderer
 			//so we use this flag to make sure shadows rendered only once per frame.
 			if (TheW3DShadowManager->isShadowScene())
+			{
+				VkGfx_SuppressSceneDraws(VkGfx_ShadowMapsActive());
 				TheW3DVolumetricShadowManager->renderShadows(projectionCount);
+				VkGfx_SuppressSceneDraws(false);
+			}
 	}
 	if (TheW3DShadowManager && stencilPass)	//reset so no more shadow processing this frame.
 		TheW3DShadowManager->queueShadows(FALSE);
