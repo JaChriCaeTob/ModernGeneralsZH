@@ -60,7 +60,7 @@ vec4 argument(uint code, vec4 current, vec4 tex, vec4 diffuse)
 	return v;
 }
 
-vec4 operate(uint op, vec4 a1, vec4 a2, vec4 current, vec4 tex, vec4 diffuse)
+vec4 operate(uint op, vec4 a0, vec4 a1, vec4 a2, vec4 current, vec4 tex, vec4 diffuse)
 {
 	if (op == 2u) return a1;                                                 // select arg1
 	if (op == 3u) return a2;                                                 // select arg2
@@ -82,6 +82,7 @@ vec4 operate(uint op, vec4 a1, vec4 a2, vec4 current, vec4 tex, vec4 diffuse)
 	if (op == 19u) return vec4(a1.rgb * a2.rgb + a1.a, a1.a * a2.a);         // modulate color, add alpha
 	if (op == 20u) return vec4((1.0 - a1.a) * a2.rgb + a1.rgb, a1.a * a2.a); // modulate inverse alpha, add color
 	if (op == 21u) return vec4((1.0 - a1.rgb) * a2.rgb + a1.a, a1.a * a2.a); // modulate inverse color, add alpha
+	if (op == 25u) return a0 + a1 * a2;                                      // multiply add
 	if (op == 24u) { float d = 4.0 * dot(a1.rgb - 0.5, a2.rgb - 0.5); return vec4(d); } // dot product 3
 	return a1 * a2;
 }
@@ -105,7 +106,8 @@ void main()
 
 		vec4 c1 = argument(s0.y, current, tex, diffuse);
 		vec4 c2 = argument(s0.z, current, tex, diffuse);
-		vec4 color = operate(colorOp, c1, c2, current, tex, diffuse);
+		vec4 c0 = argument(s1.z, current, tex, diffuse);
+		vec4 color = operate(colorOp, c0, c1, c2, current, tex, diffuse);
 
 		float alpha = current.a;
 		uint alphaOp = s0.w;
@@ -113,7 +115,7 @@ void main()
 		{
 			vec4 a1 = argument(s1.x, current, tex, diffuse);
 			vec4 a2 = argument(s1.y, current, tex, diffuse);
-			alpha = operate(alphaOp, a1, a2, current, tex, diffuse).a;
+			alpha = operate(alphaOp, a1, a1, a2, current, tex, diffuse).a;
 		}
 		current = vec4(color.rgb, alpha);
 	}

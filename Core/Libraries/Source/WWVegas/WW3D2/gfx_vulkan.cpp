@@ -1695,7 +1695,7 @@ private:
 			const DWORD* t = m_stageStates[s];
 			u.stage[2 * s][0] = t[D3DTSS_COLOROP]; u.stage[2 * s][1] = t[D3DTSS_COLORARG1]; u.stage[2 * s][2] = t[D3DTSS_COLORARG2]; u.stage[2 * s][3] = t[D3DTSS_ALPHAOP];
 			u.stage[2 * s + 1][0] = t[D3DTSS_ALPHAARG1]; u.stage[2 * s + 1][1] = t[D3DTSS_ALPHAARG2];
-			u.stage[2 * s + 1][2] = t[D3DTSS_TEXCOORDINDEX] & 3; u.stage[2 * s + 1][3] = m_tex[s] ? 1 : 0;
+			u.stage[2 * s + 1][2] = t[D3DTSS_COLORARG0]; u.stage[2 * s + 1][3] = m_tex[s] ? 1 : 0;
 			// untouched stage 0 defaults of Direct3D: modulate texture and diffuse; later stages are disabled
 			if (s == 0 && u.stage[0][0] == 0) { u.stage[0][0] = 4; u.stage[0][1] = 2; u.stage[0][2] = 0; u.stage[0][3] = 2; u.stage[1][0] = 2; u.stage[1][1] = 0; }
 			if (s > 0 && u.stage[2 * s][0] == 0) u.stage[2 * s][0] = 1;
