@@ -148,3 +148,10 @@ four-stage texture combiners, alpha test, vertex lighting, texture coordinate ge
 Not implemented yet: programmable shaders (caps advertise none, so the engine uses fixed-function paths; the updated water needs them), fog. Off-screen render targets (render-to-texture, used by heat haze, shockwave and shadow decals) and back buffer read back are implemented but not yet verified in a scene that uses them.
 and back-buffer readback (shockwave and heat haze effects are skipped).
 The game is CPU-bound, so this backend is not faster than DXVK today; its purpose is to be the base for new rendering features.
+
+### Post processing and shadows (native Vulkan backend)
+
+`gfx_vk_post.inl` (HDR scene image, bloom, roll-off/grading, FXAA, SSAO) and `gfx_vk_shadow.inl` (sun shadow map with contact-hardening
+filtering) are included by `gfx_vulkan.cpp`. The engine marks the 3D scene with `VkGfx_BeginScene3D` / `VkGfx_EndScene3D` in
+`W3DDisplay::draw`; everything outside is drawn straight to the swap chain. Settings come from Options.ini through `VkGfx_Configure`
+(see README). Depth is reconstructed from the scene depth buffer with the projection and viewport captured from the first opaque scene draw.
