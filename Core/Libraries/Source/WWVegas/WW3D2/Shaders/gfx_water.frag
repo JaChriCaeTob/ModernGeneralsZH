@@ -118,7 +118,7 @@ void main()
 	float heightSum = w0.x * 1.00 + w1.x * 0.80 + w2.x * 0.55 + w3.x * 0.35 + w4.x * 0.20 + w5.x * 0.10;
 	vec2 slope = w0.yz * 0.45 + w1.yz * 0.34 + w2.yz * 0.22 + w3.yz * 0.13 + w4.yz * 0.07 + w5.yz * 0.035;
 	slope += (nA.rg - 0.5) * 0.05 + (nB.rg - 0.5) * 0.03 + (nC.rg - 0.5) * 0.02;
-	slope *= g_wave.w * 0.9;
+	slope *= g_wave.w * 2.4;
 	float crest = sat((heightSum - 1.15) * 1.1);       // how high on a wave crest this pixel sits
 
 	// ---- units on the water: rings from the hull and a V shaped wake with foam behind moving ones
@@ -132,7 +132,7 @@ void main()
 		float radius = ob.z + 1.0;
 		float spd = sat(ob.w * 0.045);
 		float ringFade = sat(1.0 - dist / (radius * 3.5 + 6.0)) * sat(dist / (radius * 0.5));
-		float ring = sin(dist * 1.6 - t * 4.0) * ringFade * (1.0 - spd) * 0.6 * od.z;
+		float ring = sin(dist * 0.55 - t * 2.2) * ringFade * (1.0 - spd) * 0.6 * od.z;
 		slope += (dv / max(dist, 0.001)) * ring * 0.45;
 		float behind = -dot(dv, od.xy);
 		float across = dot(dv, vec2(-od.y, od.x));
@@ -176,7 +176,7 @@ void main()
 	vec3 bodyCol = mix(mix(shallowCol, midCol, sat(depthMix * 2.0)), deepCol, sat(depthMix * 2.0 - 1.0));
 	vec3 waterTint = texture(waterMap, uvWater + slope * 0.02).rgb;
 	bodyCol *= mix(vec3(1.0), waterTint * 1.6, 0.12);
-	float waveShade = (0.62 + 0.75 * sat(dot(normal, sunCam))) * (0.88 + 0.18 * heightSum);
+	float waveShade = (0.50 + 1.05 * sat(dot(normal, sunCam))) * (0.80 + 0.35 * heightSum);
 	vec3 color = scene * transmit + bodyCol * lightTint * waveShade * (1.0 - transmit);
 
 	// ---- subsurface scattering: sun shining through thin wave crests glows turquoise
