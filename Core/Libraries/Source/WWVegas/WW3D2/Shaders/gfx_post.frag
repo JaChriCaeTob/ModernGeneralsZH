@@ -29,7 +29,7 @@ layout(location = 0) out vec4 outColor;
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-#if defined(PASS_AO) || defined(PASS_AOBLUR)
+#if defined(PASS_AO) || defined(PASS_AOBLUR) || defined(PASS_SHADOW)
 
 // view space depth of a depth buffer value; the sign of the projection's [2][3] element is in p2.w
 float viewZ(float d) { return u.proj.w / (u.p2.w * d - u.proj.z); }
@@ -43,7 +43,58 @@ vec3 viewPos(vec2 p)
 
 #endif
 
-#if defined(PASS_AO)
+#if defined(PASS_SHADOW)
+
+const vec2 kDisk[24] = vec2[](
+	vec2(0.1, 0.2), vec2(-0.45, 0.12), vec2(0.38, -0.31), vec2(-0.12, -0.52), vec2(0.62, 0.21), vec2(-0.68, -0.18),
+	vec2(0.22, 0.68), vec2(-0.31, 0.61), vec2(0.78, -0.35), vec2(-0.82, 0.31), vec2(0.05, -0.85), vec2(0.45, 0.58),
+	vec2(-0.58, -0.62), vec2(0.88, 0.1), vec2(-0.1, 0.92), vec2(0.62, -0.7), vec2(-0.9, -0.1), vec2(0.3, 0.95),
+	vec2(-0.5, 0.82), vec2(0.95, 0.38), vec2(-0.25, -0.95), vec2(0.7, 0.72), vec2(-0.95, 0.5), vec2(0.15, -0.5));
+
+void main()
+{
+	float d = texture(t0, uv).r;
+	if (d >= 0.99999) { outColor = vec4(1.0); return; }
+	vec3 P = viewPos(uv);
+	vec3 Pw = (u.invView * vec4(P, 1.0)).xyz;
+	vec4 lc = u.lightVP * vec4(Pw, 1.0);
+	vec2 suv = vec2(lc.x * 0.5 + 0.5, 0.5 - lc.y * 0.5);
+	if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || lc.z > 1.0) { outColor = vec4(1.0); return; }
+
+	float size = u.shadowParams.x;
+	float range = u.shadowParams.z;
+	float mapWorld = u.shadowParams.w;
+	float texelWorld = mapWorld / size;
+	float zr = lc.z - (texelWorld * 2.2 + 0.12) / range;
+	float lightSize = u.shadowParams.y;
+	float ang = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+	mat2 rot = mat2(cos(ang), sin(ang), -sin(ang), cos(ang));
+
+	// blocker search: how far in front of this point is the geometry that shades it
+	float searchWorld = lightSize * range * 0.35;
+	float searchUV = clamp(searchWorld / mapWorld, 2.0 / size, 0.03);
+	float sum = 0.0; float cnt = 0.0;
+	for (int i = 0; i < 16; ++i)
+	{
+		vec2 o = rot * kDisk[i] * searchUV;
+		float sd = texture(t1, suv + o).r;
+		if (sd < zr) { sum += sd; cnt += 1.0; }
+	}
+	if (cnt < 0.5) { outColor = vec4(1.0); return; }
+	float zb = sum / cnt;
+	// penumbra: grows with the distance between caster and receiver
+	float penWorld = (zr - zb) * range * lightSize;
+	float rUV = clamp(penWorld / mapWorld, 1.4 / size, 0.02);
+	float lit = 0.0;
+	for (int i = 0; i < 24; ++i)
+	{
+		vec2 o = rot * kDisk[i] * rUV;
+		lit += (texture(t1, suv + o).r < zr) ? 0.0 : 1.0;
+	}
+	outColor = vec4(lit / 24.0, 0.0, 0.0, 1.0);
+}
+
+#elif defined(PASS_AO)
 
 void main()
 {
@@ -172,6 +223,8 @@ void main()
 	{
 		if (u.p1.z > 0.0)
 			c *= texture(t2, uv).r;
+		if (u.sunDir.w > 0.0)
+			c *= mix(1.0, 0.0 + texture(t3, uv).r, u.sunDir.w) * 1.0 + 0.0;
 		vec3 bloom = texture(t1, uv).rgb;
 		c += bloom * u.p0.z;
 		c = rolloff(c);

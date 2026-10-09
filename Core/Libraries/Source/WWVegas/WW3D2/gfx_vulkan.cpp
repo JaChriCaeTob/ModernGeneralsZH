@@ -117,6 +117,7 @@ struct PipeKey
 	uint32_t blendEnable = 0, srcBlend = 0, dstBlend = 0, blendOp = 0;
 	uint32_t depthTest = 0, depthWrite = 0, depthFunc = 0;
 	uint32_t cull = 0, colorMask = 0, pretransformed = 0;
+	uint32_t shadow = 0;		// depth only pass into the shadow map
 	uint32_t hdr = 0;		// 1 when drawing into the HDR scene image instead of an image of the swapchain format
 	uint32_t ps = 0;		// 0 fixed function, 1 updated river water, 2 updated sea water
 	uint32_t stencilEnable = 0, stencilFunc = 0, stencilFail = 0, stencilZFail = 0, stencilPass = 0, stencilMask = 0, stencilWriteMask = 0;
@@ -193,6 +194,7 @@ struct Backend
 	bool postOn = true;								// false: draw straight to the swapchain
 	int stage = 1;									// 0: 3D scene into the HDR image (between VkGfx_BeginScene3D and EndScene3D), 1: straight onto the swapchain
 	bool scene3D = false;							// a 3D draw happened in this frame
+	bool projCaptured = false;
 	bool depthLoaded = false;						// the depth buffer already holds this frame's scene
 	bool colorLoaded = false;						// the frame already has content in the swapchain image (resume with load, not clear)
 	bool semaphoreUsed = false;						// imageAvailable was already waited on by an earlier submit of this frame
@@ -840,6 +842,12 @@ VkPipeline GetPipeline(const PipeKey& key)
 	VkFormat colorFormat = key.hdr ? VK_FORMAT_R16G16B16A16_SFLOAT : B.swapFormat;
 	VkPipelineRenderingCreateInfo ri{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 	ri.colorAttachmentCount = 1; ri.pColorAttachmentFormats = &colorFormat; ri.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT; ri.stencilAttachmentFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
+	if (key.shadow)
+	{
+		ri.colorAttachmentCount = 0; ri.pColorAttachmentFormats = nullptr; ri.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT; ri.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+		cb.attachmentCount = 0; cb.pAttachments = nullptr;
+		rs.cullMode = VK_CULL_MODE_NONE; rs.depthBiasEnable = VK_TRUE; rs.depthBiasConstantFactor = 2.0f; rs.depthBiasSlopeFactor = 2.5f;
+	}
 	VkGraphicsPipelineCreateInfo pi{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	pi.pNext = &ri; pi.stageCount = 2; pi.pStages = stages; pi.pVertexInputState = &vin; pi.pInputAssemblyState = &ia;
 	pi.pViewportState = &vp; pi.pRasterizationState = &rs; pi.pMultisampleState = &ms; pi.pDepthStencilState = &ds;
@@ -1319,15 +1327,6 @@ bool CopyBackBufferToTexture(GpuTexture* g)
 
 // ---- the device -----------------------------------------------------------------------------------------------------------
 
-void Multiply(const float* a, const float* b, float* out)	// row-major 4x4: out = a * b
-{
-	float r[16];
-	for (int i = 0; i < 4; ++i)
-		for (int j = 0; j < 4; ++j)
-			r[i * 4 + j] = a[i * 4] * b[j] + a[i * 4 + 1] * b[4 + j] + a[i * 4 + 2] * b[8 + j] + a[i * 4 + 3] * b[12 + j];
-	memcpy(out, r, sizeof(r));
-}
-
 class VkDevice8 : public NullDevice
 {
 public:
@@ -1336,6 +1335,7 @@ public:
 	{
 		for (int i = 0; i < 512; ++i) { memset(m_matrix[i], 0, sizeof(m_matrix[i])); m_matrix[i][0] = m_matrix[i][5] = m_matrix[i][10] = m_matrix[i][15] = 1.0f; }
 		m_renderStates[D3DRS_COLORWRITEENABLE] = 0xF;
+		{ const char* e = getenv("GENERALS_SHADOWS"); if (e && e[0] == '0') g_sh.on = false; }
 		{ const char* e = getenv("GENERALS_POST"); B.postOn = !(e && e[0] == '0'); }
 		{ const char* e = getenv("GENERALS_BLOOM"); if (e) g_postCfg.bloomIntensity = (float)atof(e); e = getenv("GENERALS_FXAA"); if (e && e[0] == '0') g_postCfg.fxaa = false; e = getenv("GENERALS_AO"); if (e) g_postCfg.aoStrength = (float)atof(e); }
 		HWND w = pp.hDeviceWindow ? pp.hDeviceWindow : focus;
@@ -1594,6 +1594,13 @@ private:
 		if (!B.ready || numVertices == 0) { ++g_cnt[12]; return D3D_OK; }
 		if (B.targetUnsupported) { ++g_cnt[1]; Note("skipped, render target cannot be drawn to", m_vertexShader); return D3D_OK; }
 		const int waterKind = PixelShaderKind(m_pixelShader);
+		if (m_renderStates[D3DRS_STENCILENABLE] && ShadowsEnabled() && B.stage == 0)
+		{
+			// shadow volumes (no colour, or position only vertices) and the full screen darkening quad belong to the stencil shadows; models that only have stencil on stay
+			const DWORD cm = m_renderStates[D3DRS_COLORWRITEENABLE];
+			if ((cm & 0xF) == 0 || (m_vertexShader & 0xE) == 0x2 && !(m_vertexShader & 0x40) && !(m_vertexShader & 0xF00) || (m_vertexShader & 0xE) == 0x4 && numVertices == 4)
+				return D3D_OK;
+		}		// the engine's stencil shadows are replaced by the shadow map
 		static const bool noWater = getenv("GENERALS_NOWATER") != nullptr;
 		if (waterKind && noWater) return D3D_OK;
 		if (m_pixelShader != 0 && !waterKind) { ++g_cnt[2]; Note("skipped, pixel shader", m_vertexShader); return D3D_OK; }
@@ -1607,7 +1614,11 @@ private:
 		if (!EnsureRendering()) { ++g_cnt[13]; return D3D_OK; }
 		if (!pretransformed && !B.curTarget)
 		{
-			if (B.stage == 0) { B.haveProj = true; memcpy(B.lastProj, m_matrix[3], 64); memcpy(B.lastView, m_matrix[2], 64); }
+			// the camera of the scene: taken from the first opaque draw (sky boxes and similar draws use other view matrices)
+			if (B.stage == 0 && !B.projCaptured && m_renderStates[D3DRS_ZWRITEENABLE] && !m_renderStates[D3DRS_ALPHABLENDENABLE] && numVertices > 8)
+			{
+				B.haveProj = true; B.projCaptured = true; memcpy(B.lastProj, m_matrix[3], 64); memcpy(B.lastView, m_matrix[2], 64);
+			}
 		}
 		const UINT stride = m_stride ? m_stride : 16;
 
@@ -1750,6 +1761,12 @@ private:
 		key.cull = m_renderStates[D3DRS_CULLMODE]; key.colorMask = m_renderStates[D3DRS_COLORWRITEENABLE] & 0xF;
 		VkPipeline pipe = GetPipeline(key);
 		if (!pipe) return D3D_OK;
+		if (B.stage == 0 && !B.curTarget && !pretransformed && !waterKind && ShadowsEnabled() && key.depthWrite && !key.blendEnable && !key.stencilEnable && key.colorMask
+			&& (key.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST || key.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP))
+		{
+			GpuTexture* t0 = (m_tex[0] && u.flags[3]) ? EnsureGpuTexture(static_cast<NullTexture*>(m_tex[0])) : nullptr;
+			RecordCaster(u, vOff, iOff, (uint32_t)numVertices, (uint32_t)indexCount, wide, key.topology, fvf, stride, minIndex, t0, m_matrix[256][14]);
+		}
 		if (g_frame == 50000)
 		{
 			char line[300];
@@ -1872,12 +1889,17 @@ IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT)
 
 // Scene boundaries, called by the engine around the 3D views (W3DDisplay::draw): everything in between is drawn into the HDR image and goes
 // through the post processing chain; the interface drawn afterwards goes straight onto the swapchain and stays sharp.
-void VkGfx_BeginScene3D()
+void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ)
 {
+	{ const float l = sqrtf(sunX * sunX + sunY * sunY + sunZ * sunZ); if (l > 0.001f) { g_sh.sun[0] = sunX / l; g_sh.sun[1] = sunY / l; g_sh.sun[2] = sunZ / l; g_sh.haveSun = true; } }
+	g_sh.casters.clear();
+	B.projCaptured = false;
+	{ static int n = 0; if (n++ < 3) Log("BeginScene3D: ready %d post %d hdr %d stage %d", (int)B.ready, (int)B.postOn, B.hdr != nullptr, B.stage); }
 	if (!B.ready || !B.postOn || !B.hdr || B.stage == 0) return;
 	EndPass();
 	B.stage = 0; B.scene3D = true; B.colorLoaded = false; B.depthLoaded = false;
 }
+bool VkGfx_ShadowMapsActive() { return g_sh.on && B.postOn && B.ready; }
 void VkGfx_EndScene3D()
 {
 	if (!B.ready || !B.postOn || B.stage != 0) return;
@@ -1888,7 +1910,8 @@ void VkGfx_EndScene3D()
 
 bool VkGfx_Requested() { return false; }
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT) { return nullptr; }
-void VkGfx_BeginScene3D() {}
+void VkGfx_BeginScene3D(float, float, float) {}
+bool VkGfx_ShadowMapsActive() { return false; }
 void VkGfx_EndScene3D() {}
 
 #endif

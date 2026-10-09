@@ -4,7 +4,11 @@
 // the scene goes through bloom, a soft highlight roll-off, colour grading and FXAA and lands in the swapchain image; the interface
 // is then drawn straight onto the swapchain ("stage 1") so text and icons are never filtered.
 
-enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_COUNT };
+enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_SHADOW, PASS_COUNT };
+
+struct PostUbo;
+GpuTexture* ShadowStage(const PostUbo& base);
+bool ShadowsEnabled();
 
 struct PostUbo
 {
@@ -19,9 +23,48 @@ struct PostUbo
 	float shadowParams[4];
 };
 
+void Multiply(const float* a, const float* b, float* out)	// row-major 4x4: out = a * b
+{
+	float r[16];
+	for (int i = 0; i < 4; ++i)
+		for (int j = 0; j < 4; ++j)
+			r[i * 4 + j] = a[i * 4] * b[j] + a[i * 4 + 1] * b[4 + j] + a[i * 4 + 2] * b[8 + j] + a[i * 4 + 3] * b[12 + j];
+	memcpy(out, r, sizeof(r));
+}
+
+
+struct ShadowCaster
+{
+	DrawUbo u;
+	VkDeviceSize vOff, iOff;
+	uint32_t numVertices, indexCount, wide, topology, fvf, stride;
+	int minIndex;
+	GpuTexture* tex0;
+	float groundZ;
+};
+
+struct ShadowState
+{
+	bool on = true;
+	float sun[3] = { 0.45f, 0.45f, 0.77f };		// world space direction towards the sun
+	bool haveSun = false;
+	std::vector<ShadowCaster> casters;
+	float groundZ = 0.0f;
+	float lightVP[16] = {};
+	float range = 1.0f, mapWorld = 1.0f;
+	GpuTexture* map = nullptr;
+	GpuTexture* vis = nullptr;
+	uint32_t mapSize = 4096;
+	float lightSize = 0.050f, strength = 0.58f;
+} g_sh;
+
+
 static const int kBloomLevels = 5;
 
 // ---- images ---------------------------------------------------------------------------------------------------------------
+
+bool CreateShadowTargets();
+void DestroyShadowTargets();
 
 GpuTexture* NewTarget(uint32_t w, uint32_t h, VkFormat fmt, VkImageUsageFlags usage, VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT)
 {
@@ -66,6 +109,7 @@ bool CreatePostTargets()
 		B.depthTex->view = B.depthSampleView;
 	}
 	bool ok = B.hdr && B.ldr && B.ao[0] && B.ao[1];
+	CreateShadowTargets();
 	for (int i = 0; i < kBloomLevels; ++i) ok = ok && B.bloom[i];
 	if (!ok)
 	{
@@ -79,6 +123,7 @@ void DestroyPostTargets()
 {
 	// called after vkDeviceWaitIdle
 	if (B.hdr) { DestroyGpuTexture(B.hdr); B.hdr = nullptr; }
+	DestroyShadowTargets();
 	if (B.ldr) { DestroyGpuTexture(B.ldr); B.ldr = nullptr; }
 	for (int i = 0; i < 2; ++i)
 		if (B.ao[i]) { DestroyGpuTexture(B.ao[i]); B.ao[i] = nullptr; }
@@ -141,7 +186,7 @@ bool CreatePostShaders()
 	struct { const unsigned int* code; size_t size; } fs[PASS_COUNT] = {
 		{ g_gfxPostBloomDown0Frag, sizeof(g_gfxPostBloomDown0Frag) }, { g_gfxPostBloomDownFrag, sizeof(g_gfxPostBloomDownFrag) },
 		{ g_gfxPostBloomUpFrag, sizeof(g_gfxPostBloomUpFrag) }, { g_gfxPostCompositeFrag, sizeof(g_gfxPostCompositeFrag) },
-		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) }, { g_gfxPostAoFrag, sizeof(g_gfxPostAoFrag) }, { g_gfxPostAoBlurFrag, sizeof(g_gfxPostAoBlurFrag) } };
+		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) }, { g_gfxPostAoFrag, sizeof(g_gfxPostAoFrag) }, { g_gfxPostAoBlurFrag, sizeof(g_gfxPostAoBlurFrag) }, { g_gfxPostShadowFrag, sizeof(g_gfxPostShadowFrag) } };
 	for (int i = 0; i < PASS_COUNT; ++i)
 	{
 		smi.codeSize = fs[i].size; smi.pCode = fs[i].code;
@@ -252,12 +297,17 @@ bool RunPostProcess()
 
 	GpuTexture* none[4] = { nullptr, nullptr, nullptr, nullptr };
 	bool haveAo = false;
-	if (has3D && B.haveProj && g_postCfg.aoStrength > 0.0f && B.depthTex && B.ao[0])
+	GpuTexture* shadowVis = nullptr;
+	if (has3D && B.haveProj && B.depthTex && (g_postCfg.aoStrength > 0.0f || ShadowsEnabled()))
 	{
 		// the scene's depth buffer becomes readable
 		ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+		shadowVis = ShadowStage(ub);
+	}
+	if (has3D && B.haveProj && g_postCfg.aoStrength > 0.0f && B.depthTex && B.ao[0])
+	{
 		PostUbo a = ub;
 		a.proj[0] = B.lastProj[0]; a.proj[1] = B.lastProj[5]; a.proj[2] = B.lastProj[10]; a.proj[3] = B.lastProj[14];
 		a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f;
@@ -306,12 +356,13 @@ bool RunPostProcess()
 	}
 
 	// composite into the LDR image, then FXAA into the swapchain (or straight into the swapchain when there is no 3D scene)
-	GpuTexture* inC[4] = { B.hdr, B.bloom[0], haveAo ? B.ao[0] : nullptr, nullptr };
+	GpuTexture* inC[4] = { B.hdr, B.bloom[0], haveAo ? B.ao[0] : nullptr, shadowVis };
 	if (has3D)
 	{
 		PostUbo c = ub;
 		if (g_postCfg.bloomIntensity <= 0.0f) c.p0[2] = 0.0f;
 		c.p1[2] = haveAo ? g_postCfg.aoStrength : 0.0f;
+		c.sunDir[3] = shadowVis ? g_sh.strength : 0.0f;
 		PostDraw(PASS_COMPOSITE, false, inC, c, B.ldr->image, B.ldr->view, B.ldr->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
 		B.ldr->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ldr);
 		GpuTexture* inF[4] = { B.ldr, nullptr, nullptr, nullptr };
@@ -337,3 +388,5 @@ bool PrepareStage(bool pretransformed)
 		return RunPostProcess();
 	return true;
 }
+
+#include "gfx_vk_shadow.inl"

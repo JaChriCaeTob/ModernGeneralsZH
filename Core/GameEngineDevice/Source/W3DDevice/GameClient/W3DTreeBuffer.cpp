@@ -1505,7 +1505,8 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 
 	Int curTree;
 	// Draw tree shadows.
-	if (m_shadow && TheW3DProjectedShadowManager && TheGlobalData->m_useShadowDecals) {
+	// The round blob decals under trees are not drawn any more; real shadows replace them.
+	if (false && m_shadow && TheW3DProjectedShadowManager && TheGlobalData->m_useShadowDecals) {
 		for (curTree=0; curTree<m_numTrees; curTree++) {
 			Int type = m_trees[curTree].treeType;
 			if (type<0) {

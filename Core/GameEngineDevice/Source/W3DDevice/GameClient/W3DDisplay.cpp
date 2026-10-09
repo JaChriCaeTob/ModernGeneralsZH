@@ -1730,10 +1730,8 @@ void W3DDisplay::calculateTerrainLOD()
 			updateViews();
 			if (WW3D::Begin_Render( true, true, Vector3( 0.0f, 0.0f, 0.0f ) ) == WW3D_ERROR_OK)
 			{
-				// draw all views of the world (post processed by the native Vulkan backend, if it is in use)
-				VkGfx_BeginScene3D();
+				// draw all views of the world
 				drawViews();
-				VkGfx_EndScene3D();
 				// render is all done!
 				WW3D::End_Render();
 			}
@@ -2029,8 +2027,13 @@ AGAIN:
 				if (numRenderTargetPolygons || numRenderTargetVertices)
 					Debug_Statistics::Record_DX8_Polys_And_Vertices(numRenderTargetPolygons,numRenderTargetVertices,ShaderClass::_PresetOpaqueShader);
 
-				// draw all views of the world
+				// draw all views of the world (post processed by the native Vulkan backend, if it is in use)
+				{
+					const Coord3D &sunLight = TheGlobalData->m_terrainLightPos[0];
+					VkGfx_BeginScene3D(-sunLight.x, -sunLight.y, -sunLight.z);
+				}
 				drawViews();
+				VkGfx_EndScene3D();
 
 				// draw the user interface
 				TheInGameUI->DRAW();

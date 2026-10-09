@@ -37,6 +37,7 @@
 #include "WW3D2/camera.h"
 #include "WW3D2/light.h"
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/gfx_vulkan.h"
 #include "WW3D2/hlod.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
@@ -72,6 +73,13 @@ void PrepareShadows()
 void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
 {
 	//USE_PERF_TIMER(shadowsRender)
+	// With the native Vulkan backend's shadow maps the stencil volumes and decal shadows are not drawn at all.
+	if (VkGfx_ShadowMapsActive())
+	{
+		if (TheW3DShadowManager && stencilPass)
+			TheW3DShadowManager->queueShadows(FALSE);
+		return;
+	}
 	shadowCameraFrustum=&rinfo.Camera.Get_Frustum();
 	Int projectionCount=0;
 
