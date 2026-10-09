@@ -1889,7 +1889,18 @@ public:
 
 } // namespace
 
-void VkGfx_Configure(const VkGfx_Settings& s) { g_cfg = s; }
+void VkGfx_Configure(const VkGfx_Settings& s)
+{
+	g_cfg = s;
+	if (B.ready)
+	{
+		g_sh.on = s.softShadows;
+		g_postCfg.fxaa = s.fxaa;
+		g_postCfg.bloomIntensity = s.bloom ? 0.16f : 0.0f;
+		g_postCfg.aoStrength = s.ambientOcclusion ? 0.85f : 0.0f;
+	}
+}
+bool VkGfx_NativeActive() { return B.ready; }
 
 bool VkGfx_Requested()
 {
@@ -1951,6 +1962,7 @@ void VkGfx_EndScene3D()
 #else	// no Vulkan headers in this configuration
 
 void VkGfx_Configure(const VkGfx_Settings&) {}
+bool VkGfx_NativeActive() { return false; }
 bool VkGfx_Requested() { return false; }
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT) { return nullptr; }
 void VkGfx_BeginScene3D(float, float, float) {}

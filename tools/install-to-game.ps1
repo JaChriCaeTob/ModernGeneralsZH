@@ -50,5 +50,12 @@ cd /d "%~dp0"
 Set-Content (Join-Path $GameDir "Play-x64.bat") ($common + "`r`n`"%~dp0x64\generalszh64.exe`" -useCwd -win$modArg %*`r`n") -Encoding ASCII
 Set-Content (Join-Path $GameDir "Play-x64-Fullscreen.bat") ($common + "`r`n`"%~dp0x64\generalszh64.exe`" -useCwd$modArg %*`r`n") -Encoding ASCII
 
+# extra check boxes in the options menu (advanced pane): patched copy of the game's OptionsMenu.wnd, written as a loose file
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    python (Join-Path $PSScriptRoot "patch_options_wnd.py") $GameDir
+} else {
+    Write-Host "Python not found: the extra graphics check boxes in the options menu were not installed (the Options.ini keys still work)."
+}
+
 Write-Host "Installed to $x64. Start the game with Play-x64.bat (windowed) or Play-x64-Fullscreen.bat."
 Write-Host "Set the resolution in the in-game options or in Options.ini (see README). Rendering is uncapped by default; FPSLimit = yes in Options.ini restores the 30 fps cap."

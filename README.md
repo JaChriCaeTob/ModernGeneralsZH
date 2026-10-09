@@ -191,6 +191,11 @@ The game rewrites this file when it exits, so edit it while the game is closed. 
 | `SunAzimuth` | random | Compass direction of the sun in degrees (0 to 360). With no value the sun is random on every launch. |
 | `SunElevation` | random | Sun height in degrees (about 10 low and long shadows, 80 almost overhead). Only used together with `SunAzimuth`; without it the elevation is random between 35 and 62. |
 
+The same effect switches are in the game's options menu: **Options > Detail: Custom** opens the advanced pane with *Soft shadows (sun)*,
+*Ambient occlusion*, *Bloom (glow)* and *Anti-aliasing (FXAA)*. They apply immediately and are written to `Options.ini`. The three new boxes come
+from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes as a loose file into `<GameDir>\Window\Menus\` (generated from your own
+`WindowZH.big`; needs Python). Changing them in the middle of a game is limited by the game itself, so use the main menu.
+
 **Effects shared by both renderers**
 
 | Key | Default | Meaning |
@@ -364,6 +369,8 @@ scripts/build-x64.ps1          build the x64 game
 scripts/compile-vk-shaders.ps1 recompile the native renderer's GLSL shaders (needs glslang)
 scripts/compile-shaders.ps1    recompile the classic water shaders (needs fxc.exe)
 scripts/gen_null_stubs.py, scripts/callsites.py   helpers that generated parts of the backend interface
+tools/bigtool.py               list/extract EA .big archives
+tools/patch_options_wnd.py     adds the graphics check boxes to the options menu (run by the install script)
 tools/dxvk/                    patch + script for the patched DXVK (Classic renderer)
 tools/install-to-game.ps1      copy the build into your own game folder
 Dependencies/D3DX8Compat/      d3dx8 replacement

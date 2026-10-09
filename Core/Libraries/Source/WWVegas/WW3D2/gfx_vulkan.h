@@ -12,7 +12,8 @@ struct VkGfx_Settings
 	bool bloom = true, ambientOcclusion = true, fxaa = true, softShadows = true;
 	float sunAzimuth = -1.0f, sunElevation = -1.0f;		// degrees; negative = random for every launch
 };
-void VkGfx_Configure(const VkGfx_Settings& s);
+void VkGfx_Configure(const VkGfx_Settings& s);		// may also be called while the game runs: the effect settings are applied live
+bool VkGfx_NativeActive();				// true when the native renderer is the one in use
 bool VkGfx_Requested();
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT sdkVersion);
 void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ);

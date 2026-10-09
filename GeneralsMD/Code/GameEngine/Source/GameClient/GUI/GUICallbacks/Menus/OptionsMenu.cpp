@@ -48,6 +48,7 @@
 #include "GameClient/LookAtXlat.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Gadget.h"
+#include "WW3D2/gfx_vulkan.h"
 #include "GameClient/GadgetCheckBox.h"
 #include "GameClient/GadgetStaticText.h"
 #include "GameClient/GadgetTextEntry.h"
@@ -194,6 +195,24 @@ static GameWindow *   checkUnlockFps   = nullptr;
 
 static NameKeyType    checkHeatEffectsID = NAMEKEY_INVALID;
 static GameWindow *   checkHeatEffects   = nullptr;
+
+// extra check boxes of the native Vulkan renderer (added to the advanced pane by tools/patch_options_wnd.py)
+static GameWindow *   checkAmbientOcclusion = nullptr;
+static GameWindow *   checkBloom            = nullptr;
+static GameWindow *   checkFXAA             = nullptr;
+
+static Bool optionFlag(OptionPreferences *p, const char *key, Bool def)
+{
+	OptionPreferences::const_iterator it = p->find(key);
+	return it == p->end() ? def : stricmp(it->second.str(), "no") != 0;
+}
+
+static void applyNativeGraphics(Bool soft, Bool ao, Bool bloom, Bool fxaa)
+{
+	VkGfx_Settings gs;
+	gs.softShadows = soft; gs.ambientOcclusion = ao; gs.bloom = bloom; gs.fxaa = fxaa;
+	VkGfx_Configure(gs);
+}
 
 /*
 
@@ -369,6 +388,19 @@ static void setDefaults()
 
 static void saveOptions()
 {
+	if (VkGfx_NativeActive() && checkAmbientOcclusion && checkBloom && checkFXAA && check3DShadows)
+	{
+		const Bool soft = GadgetCheckBoxIsChecked( check3DShadows );
+		const Bool ao = GadgetCheckBoxIsChecked( checkAmbientOcclusion );
+		const Bool bloom = GadgetCheckBoxIsChecked( checkBloom );
+		const Bool fxaa = GadgetCheckBoxIsChecked( checkFXAA );
+		(*pref)["SoftShadows"] = soft ? "yes" : "no";
+		(*pref)["AmbientOcclusion"] = ao ? "yes" : "no";
+		(*pref)["Bloom"] = bloom ? "yes" : "no";
+		(*pref)["AntiAliasingFXAA"] = fxaa ? "yes" : "no";
+		applyNativeGraphics( soft, ao, bloom, fxaa );
+	}
+
 	Int index;
 	Int val;
 	//-------------------------------------------------------------------------------------------------
@@ -1056,6 +1088,23 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	sliderParticleCapID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ParticleCapSlider" );
   sliderParticleCap = TheWindowManager->winGetWindowFromId( nullptr, sliderParticleCapID );
+
+	checkAmbientOcclusion = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckAmbientOcclusion" ) );
+	checkBloom            = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBloom" ) );
+	checkFXAA             = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckFXAA" ) );
+	{
+		const Bool native = VkGfx_NativeActive();
+		if (checkAmbientOcclusion) { GadgetCheckBoxSetText( checkAmbientOcclusion, UnicodeString( L"Ambient occlusion" ) ); GadgetCheckBoxSetChecked( checkAmbientOcclusion, optionFlag( pref, "AmbientOcclusion", TRUE ) ); checkAmbientOcclusion->winEnable( native ); }
+		if (checkBloom)            { GadgetCheckBoxSetText( checkBloom, UnicodeString( L"Bloom (glow)" ) ); GadgetCheckBoxSetChecked( checkBloom, optionFlag( pref, "Bloom", TRUE ) ); checkBloom->winEnable( native ); }
+		if (checkFXAA)             { GadgetCheckBoxSetText( checkFXAA, UnicodeString( L"Anti-aliasing (FXAA)" ) ); GadgetCheckBoxSetChecked( checkFXAA, optionFlag( pref, "AntiAliasingFXAA", TRUE ) ); checkFXAA->winEnable( native ); }
+		if (native && check3DShadows)
+		{
+			// on the native renderer this box switches the sun shadow maps
+			GadgetCheckBoxSetText( check3DShadows, UnicodeString( L"Soft shadows (sun)" ) );
+			GadgetCheckBoxSetChecked( check3DShadows, optionFlag( pref, "SoftShadows", TRUE ) );
+			if (check2DShadows) check2DShadows->winHide( TRUE );
+		}
+	}
 
 	WinAdvancedDisplay->winHide(TRUE);
 
