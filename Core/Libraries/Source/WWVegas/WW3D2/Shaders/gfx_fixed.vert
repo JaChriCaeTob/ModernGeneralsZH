@@ -129,7 +129,7 @@ void main()
 		if (draw.pointScale.w != 0.0)
 		{
 			float d = length((draw.worldView * vec4(inPos.xyz, 1.0)).xyz);
-			size = draw.alphaRef.y * size * inversesqrt(max(draw.pointScale.x + draw.pointScale.y * d + draw.pointScale.z * d * d, 1e-6));
+			size = 0.5 * draw.alphaRef.y * size * inversesqrt(max(draw.pointScale.x + draw.pointScale.y * d + draw.pointScale.z * d * d, 1e-6));
 		}
 		gl_PointSize = clamp(size, max(draw.pointParams.y, 1.0), max(draw.pointParams.z, 1.0));
 		if (draw.lightFlags.x != 0u)

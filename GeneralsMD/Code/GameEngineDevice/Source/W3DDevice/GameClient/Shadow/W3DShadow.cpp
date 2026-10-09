@@ -82,11 +82,7 @@ void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
 	if (stencilPass == FALSE  && TheW3DProjectedShadowManager)
 	{
 			if (TheW3DShadowManager->isShadowScene())
-			{
-				VkGfx_SuppressSceneDraws(VkGfx_ShadowMapsActive());
 				projectionCount=TheW3DProjectedShadowManager->renderShadows(rinfo);
-				VkGfx_SuppressSceneDraws(false);
-			}
 	}
 
 	if (stencilPass == TRUE && TheW3DVolumetricShadowManager)
