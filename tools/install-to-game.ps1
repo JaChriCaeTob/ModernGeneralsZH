@@ -59,5 +59,12 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
     Write-Host "Python not found: the extra graphics check boxes in the options menu were not installed (the Options.ini keys still work)."
 }
 
+# self-made replacement models and textures (assets\Art), installed as loose files
+$assets = Join-Path (Split-Path $PSScriptRoot -Parent) "assets\Art"
+if (Get-ChildItem $assets -Recurse -File -Exclude .gitkeep -ErrorAction SilentlyContinue) {
+    Copy-Item $assets $GameDir -Recurse -Force
+    Write-Host "Copied the models and textures from $assets into $GameDir\Art."
+}
+
 Write-Host "Installed to $x64. Start the game with Play-Updated.bat or Play-Original.bat (both windowed: remove -win in the .bat for fullscreen)."
 Write-Host "Set the resolution in the in-game options or in Options.ini (see README). Rendering is uncapped by default; FPSLimit = yes in Options.ini restores the 30 fps cap."

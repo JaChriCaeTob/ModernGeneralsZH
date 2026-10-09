@@ -373,6 +373,8 @@ scripts/compile-vk-shaders.ps1 recompile the native renderer's GLSL shaders (nee
 scripts/compile-shaders.ps1    recompile the classic water shaders (needs fxc.exe)
 scripts/gen_null_stubs.py, scripts/callsites.py   helpers that generated parts of the backend interface
 tools/bigtool.py               list/extract EA .big archives
+tools/w3d_sizes.py             size and triangle count of every mesh in a folder of W3D files (scale reference for new models)
+assets/Art/                    self-made replacement models and textures, copied into the game by the install script
 tools/patch_options_wnd.py     adds the graphics check boxes to the options menu (run by the install script)
 tools/dxvk/                    patch + script for the patched DXVK (Classic renderer)
 tools/install-to-game.ps1      copy the build into your own game folder
