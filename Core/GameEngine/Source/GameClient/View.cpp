@@ -102,10 +102,10 @@ void View::init()
 	if (g_originalMaxCameraHeight <= 0.0f)
 		g_originalMaxCameraHeight = TheGlobalData->m_maxCameraHeight;
 	{
-		// zoom-out limit: Options.ini key MaxCameraHeight (the game's own value is 310; this build allows 620 unless set)
+		// zoom-out limit: Options.ini key MaxCameraHeight (the game's own value is 310; this build allows 450 unless set)
 		OptionPreferences prefs;
 		OptionPreferences::const_iterator it = prefs.find("MaxCameraHeight");
-		const Real maxHeight = it != prefs.end() ? (Real)atof(it->second.str()) : 620.0f;
+		const Real maxHeight = it != prefs.end() ? (Real)atof(it->second.str()) : 450.0f;
 		if (maxHeight > TheGlobalData->m_minCameraHeight)
 			TheWritableGlobalData->m_maxCameraHeight = maxHeight;
 	}

@@ -835,7 +835,7 @@ void W3DDisplay::init()
 			gs.softShadows = flag("SoftShadows", true);
 			gs.sunAzimuth = number("SunAzimuth", -1.0f);
 			gs.sunElevation = number("SunElevation", -1.0f);
-			gs.clouds = flag("Clouds", true);
+			gs.clouds = flag("Clouds", false);
 			gs.cloudShadows = flag("CloudShadows", true);
 			gs.cloudBase = number("CloudBase", gs.cloudBase);
 			gs.cloudThickness = number("CloudThickness", gs.cloudThickness);

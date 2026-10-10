@@ -1121,7 +1121,7 @@ bool EnsureRendering()
 uint32_t g_cnt[16] = {};
 struct CloudCfg
 {
-	bool clouds = true, shadows = true;
+	bool clouds = false, shadows = true;
 	float base = 350.0f, thickness = 120.0f, coverage = 0.20f, density = 0.85f, speed = 1.0f, shadowStrength = 0.85f;
 } g_cloud;
 

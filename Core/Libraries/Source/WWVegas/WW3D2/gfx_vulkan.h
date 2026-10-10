@@ -12,7 +12,7 @@ struct VkGfx_Settings
 	bool bloom = true, ambientOcclusion = true, fxaa = true, softShadows = true;
 	float sunAzimuth = -1.0f, sunElevation = -1.0f;		// degrees; negative = random for every launch
 	// volumetric clouds (Options.ini keys Clouds, CloudShadows, CloudBase, CloudThickness, CloudCoverage, CloudDensity, CloudSpeed, CloudShadowStrength)
-	bool clouds = true;				// visible clouds when the camera is above the cloud layer
+	bool clouds = false;				// visible clouds (off by default: cloud shadows are always on) when the camera is above the cloud layer
 	bool cloudShadows = true;		// moving cloud shadows on the ground (replace the game's cloud texture)
 	float cloudBase = 350.0f;		// height of the underside of the cloud layer (world units, the ground is mostly between 0 and 100)
 	float cloudThickness = 120.0f;

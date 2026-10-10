@@ -3771,8 +3771,8 @@ bool W3DView::getDesiredTerrainDrawSize(ICoord2D &dimensions) const
 	if (m_isUserControlled)
 	{
 		const Real original = 310.0f;
-		if (m_currentHeightAboveGround > original * 1.25f) s_wideView = TRUE;
-		else if (m_currentHeightAboveGround < original * 1.1f) s_wideView = FALSE;
+		if (m_currentHeightAboveGround > original * 1.6f) s_wideView = TRUE;			// only with a raised MaxCameraHeight
+		else if (m_currentHeightAboveGround < original * 1.45f) s_wideView = FALSE;
 	}
 	else
 		s_wideView = FALSE;

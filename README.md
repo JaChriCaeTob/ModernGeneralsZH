@@ -207,8 +207,8 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 | `Shockwaves` | `yes` | `no` = no shockwave ring on explosions. |
 | `HeatEffects` | game setting | `no` = no heat distortion (also in the game's options menu). |
 | `FPSLimit` | `no` (unlimited) | `yes` = the original 30 fps cap. The logic always runs at 30 Hz. |
-| `MaxCameraHeight` | `620` | How far the camera may zoom out in a game (the game's own value is 310; the main menu scene keeps 310). Set `310` for the original limit. |
-| `Clouds` | `yes` | Volumetric clouds, visible when the camera is above the cloud layer (zoom far out). |
+| `MaxCameraHeight` | `450` | How far the camera may zoom out in a game (the game's own value is 310; the main menu scene keeps 310). Set `310` for the original limit. |
+| `Clouds` | `no` | Visible volumetric clouds when the camera is above the cloud layer (needs a raised `MaxCameraHeight`, about 620 or more; costs performance). The cloud shadows below are independent of this. |
 | `CloudShadows` | `yes` | Moving cloud shadows on the ground; they replace the game's own cloud texture. |
 | `CloudBase` | `350` | Height of the underside of the clouds in world units (the ground is mostly between 0 and 100). Lower it so clouds show at a smaller zoom; keep it below `MaxCameraHeight`. |
 | `CloudThickness` | `120` | Thickness of the cloud layer. |
