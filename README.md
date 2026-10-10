@@ -151,10 +151,10 @@ Notes
 The easiest way: use the prebuilt [`release.zip`](release.zip) from this repository. It contains the 64-bit program, the DXVK DLLs, the two launchers and
 an install note, but **no game files** (you need your own Zero Hour 1.04 and a GPU/driver with Vulkan 1.3).
 
-1. Download `release.zip` and unzip **everything into your Zero Hour folder** (the one that contains `generalszh.exe` and the `.big` files).
+1. Download `release.zip` and unzip **everything into your Zero Hour folder** (the one with the `.big` files such as `INIZH.big`).
    You get `x64\`, `Play-Updated.bat`, `Play-Original.bat`, `Install-OptionsMenu.bat` and `tools\`.
 2. Start **`Play-Updated.bat`** (updated graphics) or **`Play-Original.bat`** (original rendering, handy for comparing). Always start the game through
-   these files, not through `x64\generalszh64.exe`, and never copy that file over your original `generalszh.exe`.
+   these files, not through `x64\generalszh64.exe`, and never copy that file over an original game file.
 3. Both start windowed. Remove `-win` inside the `.bat` for fullscreen. Set your resolution in the in-game options or in `Options.ini`.
 4. Optional: run `Install-OptionsMenu.bat` (needs Python 3) to get the graphics check boxes in *Options > advanced display options*. It reads the menu from
    your own game files and writes a patched copy as a loose file. Without it every effect is still available through `Options.ini` (see below).
@@ -181,7 +181,7 @@ This only **adds** things:
 
 Nothing of the original game is modified. The install script also removes older launcher files (`Play-x64*.bat`). To uninstall, delete the `x64` folder, the two `.bat` files and the loose `Window` folder. Start the game
 through the `.bat` files (or with the same arguments): they set the working directory and `-useCwd`, which the executable
-needs to find loose `Data\Cursors` and `Data\Movies`. Do not copy `generalszh64.exe` over the original `generalszh.exe`.
+needs to find loose `Data\Cursors` and `Data\Movies`. Do not copy `generalszh64.exe` over an original game file.
 
 ## Running
 

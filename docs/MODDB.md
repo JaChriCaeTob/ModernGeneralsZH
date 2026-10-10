@@ -40,8 +40,8 @@ Everything below is optional and can be switched on or off in the in-game option
 There is **no installer and no prebuilt download in the repository**: you build it yourself, or use a build somebody attached to this page. You need your own, legitimate copy of Zero Hour 1.04. Nothing of the original game is modified or redistributed.
 
 If you have a build (a folder with `x64`, `Play-Updated.bat`, `Play-Original.bat` and `Window`):
-1. Copy the contents into your Zero Hour game folder (the one that contains `generalszh.exe` and the `.big` files).
-2. Start the game with `Play-Updated.bat` (or `Play-Original.bat` to compare). Do not start `x64\generalszh64.exe` directly and do not copy it over your original `generalszh.exe`: the `.bat` files set the working directory the game needs.
+1. Copy the contents into your Zero Hour game folder (the one with the `.big` files such as `INIZH.big`).
+2. Start the game with `Play-Updated.bat` (or `Play-Original.bat` to compare). Do not start `x64\generalszh64.exe` directly and do not copy it over an original game file: the `.bat` files set the working directory the game needs.
 3. Both launchers start windowed. Remove `-win` inside the `.bat` for fullscreen. Set your resolution in the in-game options or in `Options.ini`.
 4. To uninstall, delete the `x64` folder, the two `.bat` files and the loose `Window` folder.
 

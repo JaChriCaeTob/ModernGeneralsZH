@@ -39,10 +39,10 @@ You need your own copy of Command & Conquer: Generals - Zero Hour 1.04 and a gra
 This archive contains no game files.
 
 Install
-1. Unzip everything into your Zero Hour folder (the one with generalszh.exe and the .big files).
+1. Unzip everything into your Zero Hour folder (the one with the .big files such as INIZH.big).
    You get: x64\, Play-Updated.bat, Play-Original.bat, Install-OptionsMenu.bat, tools\.
 2. Start Play-Updated.bat (updated graphics) or Play-Original.bat (original rendering, for comparison).
-   Do not start x64\generalszh64.exe directly and do not copy it over generalszh.exe.
+   Do not start x64\generalszh64.exe directly and do not copy it over an original game file.
 3. Both start windowed. Remove -win inside the .bat for fullscreen. Set the resolution in the in-game options or in Options.ini.
 4. Optional: run Install-OptionsMenu.bat (needs Python 3) to get the graphics check boxes in Options > advanced display options.
    Without it every effect can still be switched in Options.ini (see the README on GitHub).
