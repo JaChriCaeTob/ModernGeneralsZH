@@ -27,12 +27,15 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	uvec4 texGen[8];       // per stage: x = source (0 vertex set, 1 camera normal, 2 camera position, 3 reflection), y = vertex set, z = transform count (0 off), w = 1 projected
 	vec4 pointParams;      // size, min size, max size, 1 when point sprites are on
 	vec4 pointScale;       // attenuation A, B, C, 1 when scaling is on
+	vec4 softA;            // soft particles: projection [2][2], [3][2], fade distance, mode (0 off, 1 fade alpha, 2 fade colour)
+	vec4 softB;            // size in pixels of the depth image
 } draw;
 
 layout(set = 0, binding = 1) uniform sampler2D tex0;
 layout(set = 0, binding = 2) uniform sampler2D tex1;
 layout(set = 0, binding = 3) uniform sampler2D tex2;
 layout(set = 0, binding = 4) uniform sampler2D tex3;
+layout(set = 0, binding = 8) uniform sampler2D depthCopy;
 
 layout(location = 0) in vec4 vDiffuse;
 layout(location = 1) in vec4 vUv[8];
@@ -134,6 +137,18 @@ void main()
 		else if (f == 6u) pass = a != ref;
 		else if (f == 7u) pass = a >= ref;
 		if (!pass) discard;
+	}
+
+	if (draw.softA.w > 0.5)
+	{
+		// particles fade out where they meet the geometry behind them
+		float sceneDepth = texture(depthCopy, gl_FragCoord.xy / draw.softB.xy).r;
+		float sceneZ = draw.softA.y / (sceneDepth - draw.softA.x);
+		float fragZ = draw.softA.y / (gl_FragCoord.z - draw.softA.x);
+		float f = clamp((sceneZ - fragZ) / draw.softA.z, 0.0, 1.0);
+		f = f * f * (3.0 - 2.0 * f);
+		if (sceneDepth >= 0.99999) f = 1.0;
+		if (draw.softA.w > 1.5) current.rgb *= f; else current.a *= f;
 	}
 
 	outColor = clamp(current, 0.0, 1.0);

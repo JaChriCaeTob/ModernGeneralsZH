@@ -42,6 +42,7 @@
 #include "dx8vertexbuffer.h"
 #include "dx8indexbuffer.h"
 #include "dx8wrapper.h"
+#include "gfx_vulkan.h"
 #include "vertmaterial.h"
 #include "texture.h"
 #include "d3d8.h"
@@ -163,6 +164,7 @@ public:
 	unsigned short polygon_count;			// Polygon count to process (3 indices = one polygon)
 	unsigned short min_vertex_index;		// First index used in the vb
 	unsigned short vertex_count;			// Number of vertices used in vb
+	bool soft;						// particle draw: the native Vulkan renderer fades it near geometry
 };
 
 typedef std::list<SortingNodeStruct*> SortingNodeStructList;
@@ -237,6 +239,7 @@ void SortingRendererClass::Insert_Triangles(
 
 	state->start_index=start_index;
 	state->polygon_count=polygon_count;
+	state->soft=VkGfx_SoftDrawsActive();
 	state->min_vertex_index=min_vertex_index;
 	state->vertex_count=vertex_count;
 
@@ -553,6 +556,7 @@ void SortingRendererClass::Flush_Sorting_Pool()
 			if (node_id!=tis[i].idx) {
 				SortingNodeStruct* state=overlapping_nodes[node_id];
 				Apply_Render_State(state->sorting_state);
+				VkGfx_SoftDraws(state->soft);
 
 				DX8Wrapper::Draw_Triangles(
 					start_index*3,
@@ -571,6 +575,7 @@ void SortingRendererClass::Flush_Sorting_Pool()
 		if (count_to_render) {
 			SortingNodeStruct* state=overlapping_nodes[node_id];
 			Apply_Render_State(state->sorting_state);
+			VkGfx_SoftDraws(state->soft);
 
 			DX8Wrapper::Draw_Triangles(
 				start_index*3,
@@ -581,6 +586,7 @@ void SortingRendererClass::Flush_Sorting_Pool()
 
 		chunkOffset += chunkCount;
 	}
+	VkGfx_SoftDraws(false);
 
 	// Release all references and return nodes back to the clean list for the frame...
 	for (unsigned node_id=0;node_id<overlapping_node_count;++node_id) {
@@ -624,7 +630,9 @@ void SortingRendererClass::Flush()
 		}
 		else {
 			DX8Wrapper::Set_Render_State(state->sorting_state);
+			VkGfx_SoftDraws(state->soft);
 			DX8Wrapper::Draw_Triangles(state->start_index,state->polygon_count,state->min_vertex_index,state->vertex_count);
+			VkGfx_SoftDraws(false);
 			DX8Wrapper::Release_Render_State();
 			Release_Refs(state);
 			clean_list.push_front(state);

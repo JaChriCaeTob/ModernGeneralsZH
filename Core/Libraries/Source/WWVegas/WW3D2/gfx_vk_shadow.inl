@@ -153,7 +153,8 @@ bool RenderShadowMap(const float* lightVP)
 		if (pipe != last) { vkCmdBindPipeline(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe); last = pipe; }
 		VkDescriptorBufferInfo ubo{ B.ring, uOff, sizeof(DrawUbo) };
 		VkDescriptorImageInfo imgs[4];
-		VkWriteDescriptorSet w[5] = {};
+		VkWriteDescriptorSet w[6] = {};
+		VkDescriptorImageInfo depthImg{ samp, B.white->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 		w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[0].pBufferInfo = &ubo;
 		for (int s = 0; s < 4; ++s)
 		{
@@ -162,7 +163,9 @@ bool RenderShadowMap(const float* lightVP)
 			w[1 + s].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[1 + s].dstBinding = 1 + s; w[1 + s].descriptorCount = 1;
 			w[1 + s].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[1 + s].pImageInfo = &imgs[s];
 		}
-		vkCmdPushDescriptorSetKHR(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, B.pipeLayout, 0, 5, w);
+		w[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[5].dstBinding = 8; w[5].descriptorCount = 1;
+		w[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[5].pImageInfo = &depthImg;
+		vkCmdPushDescriptorSetKHR(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, B.pipeLayout, 0, 6, w);
 		VkBuffer bufs[2] = { B.ring, B.defaults };
 		VkDeviceSize offs[2] = { c.vOff, 0 };
 		vkCmdBindVertexBuffers(B.cmd, 0, 2, bufs, offs);

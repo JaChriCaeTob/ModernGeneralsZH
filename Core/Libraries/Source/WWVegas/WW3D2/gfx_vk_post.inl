@@ -98,6 +98,8 @@ bool CreatePostTargets()
 		w = std::max(1u, w / 2); h = std::max(1u, h / 2);
 		B.bloom[i] = NewTarget(w, h, VK_FORMAT_R16G16B16A16_SFLOAT, sampled);
 	}
+	B.depthCopy = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);		// same format as the scene depth: a copy needs compatible formats
+	if (B.depthCopy) B.depthCopy->isDepth = true;
 	B.ao[0] = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, sampled);
 	B.ao[1] = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, sampled);
 	// a view of the depth buffer for sampling; it is not owned by this wrapper
@@ -126,6 +128,7 @@ void DestroyPostTargets()
 	// called after vkDeviceWaitIdle
 	if (B.hdr) { DestroyGpuTexture(B.hdr); B.hdr = nullptr; }
 	DestroyShadowTargets();
+	if (B.depthCopy) { DestroyGpuTexture(B.depthCopy); B.depthCopy = nullptr; }
 	if (B.ldr) { DestroyGpuTexture(B.ldr); B.ldr = nullptr; }
 	for (int i = 0; i < 2; ++i)
 		if (B.ao[i]) { DestroyGpuTexture(B.ao[i]); B.ao[i] = nullptr; }
@@ -392,3 +395,28 @@ bool PrepareStage(bool pretransformed)
 }
 
 #include "gfx_vk_shadow.inl"
+
+// Copies the depth buffer of the scene drawn so far into a separate image the particle shader can read (it cannot read the depth buffer it is testing against).
+void MakeDepthCopy()
+{
+	EndPass();
+	B.depthCopyDone = false;
+	if (!B.depthCopy || !B.depthLoaded)
+		return;
+	ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+	ImageBarrier(B.cmd, B.depthCopy->image, B.depthCopy->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+	VkImageCopy ic{};
+	ic.srcSubresource = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1 }; ic.dstSubresource = ic.srcSubresource;
+	ic.extent = { B.extent.width, B.extent.height, 1 };
+	vkCmdCopyImage(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, B.depthCopy->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ic);
+	ImageBarrier(B.cmd, B.depthCopy->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+	ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+	B.depthCopy->layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	B.depthCopyDone = true;
+}

@@ -88,6 +88,7 @@
 #include "dx8fvf.h"
 #include "d3dx8math.h"
 #include "sortingrenderer.h"
+#include "gfx_vulkan.h"
 
 // Upgraded to DX8 2/2/01 HY
 
@@ -983,6 +984,7 @@ void PointGroupClass::Render(RenderInfoClass &rinfo)
 		DX8Wrapper::Set_Index_Buffer (indexbuffer, 0);
 		DX8Wrapper::Set_Vertex_Buffer (PointVerts);
 
+		VkGfx_SoftDraws(true);		// particles: faded near geometry by the native Vulkan renderer
 		if ( sort )
 		{
 				SortingRendererClass::Insert_Triangles (0, delta / verticesperprimitive, 0, delta);
@@ -991,6 +993,7 @@ void PointGroupClass::Render(RenderInfoClass &rinfo)
 		{
 			DX8Wrapper::Draw_Triangles (0, delta / verticesperprimitive, 0, delta);
 		}
+		VkGfx_SoftDraws(false);
 
 		current+=delta;
 	}
@@ -1915,10 +1918,12 @@ void PointGroupClass::RenderVolumeParticle(RenderInfoClass &rinfo, unsigned int 
 			/// @todo lorenzen sez: precompute these params, above
 
 
+			VkGfx_SoftDraws(true);
 			if ( sort )
 					SortingRendererClass::Insert_Triangles (0, delta / verticesperprimitive, 0, delta);
 			else
 				DX8Wrapper::Draw_Triangles (0, delta / verticesperprimitive, 0, delta);
+			VkGfx_SoftDraws(false);
 
 
 			current+=delta;

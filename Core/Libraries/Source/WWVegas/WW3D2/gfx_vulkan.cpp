@@ -34,6 +34,7 @@ namespace
 // ---- log ------------------------------------------------------------------------------------------------------------------
 
 static VkGfx_Settings g_cfg;
+static bool g_softDraw = false;		// the draws being issued are particles (see VkGfx_SoftDraws)
 
 void Log(const char* fmt, ...)
 {
@@ -144,8 +145,10 @@ struct DrawUbo
 	uint32_t texGen[8][4];
 	float pointParams[4];
 	float pointScale[4];
+	float softA[4];
+	float softB[4];
 };
-static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 + 8 * 16 + 32, "DrawUbo must match the std140 block in the shaders");
+static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 + 8 * 16 + 32 + 32, "DrawUbo must match the std140 block in the shaders");
 
 uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
 
@@ -198,6 +201,8 @@ struct Backend
 	int stage = 1;									// 0: 3D scene into the HDR image (between VkGfx_BeginScene3D and EndScene3D), 1: straight onto the swapchain
 	bool scene3D = false;							// a 3D draw happened in this frame
 	bool projCaptured = false;
+	bool depthCopyDone = false;						// this frame's depth buffer was copied for the soft particles
+	GpuTexture* depthCopy = nullptr;
 	bool depthLoaded = false;						// the depth buffer already holds this frame's scene
 	bool colorLoaded = false;						// the frame already has content in the swapchain image (resume with load, not clear)
 	bool semaphoreUsed = false;						// imageAvailable was already waited on by an earlier submit of this frame
@@ -458,7 +463,7 @@ bool CreateSwapchain()
 	VkImageCreateInfo di{ VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	di.imageType = VK_IMAGE_TYPE_2D; di.format = VK_FORMAT_D32_SFLOAT_S8_UINT; di.extent = { ext.width, ext.height, 1 };
 	di.mipLevels = 1; di.arrayLayers = 1; di.samples = VK_SAMPLE_COUNT_1_BIT; di.tiling = VK_IMAGE_TILING_OPTIMAL;
-	di.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	di.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT; di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VKCHECK(vkCreateImage(B.device, &di, nullptr, &B.depthImage));
 	VkMemoryRequirements req;
 	vkGetImageMemoryRequirements(B.device, B.depthImage, &req);
@@ -1119,6 +1124,7 @@ struct PostCfg
 	float bloomThreshold = 0.92f, bloomKnee = 0.25f, bloomIntensity = 0.16f, saturation = 1.04f, contrast = 1.03f;
 	bool fxaa = false;
 	float aoStrength = 0.85f, aoRadius = 22.0f;
+	float softParticles = 14.0f;		// fade distance in world units, 0 = off
 } g_postCfg;
 
 #include "gfx_vk_post.inl"
@@ -1341,6 +1347,7 @@ public:
 		g_sh.on = g_cfg.softShadows; B.postOn = g_cfg.postProcessing; g_postCfg.fxaa = g_cfg.fxaa;
 		if (!g_cfg.bloom) g_postCfg.bloomIntensity = 0.0f;
 		if (!g_cfg.ambientOcclusion) g_postCfg.aoStrength = 0.0f;
+		{ const char* e = getenv("GENERALS_SOFT"); if (e) g_postCfg.softParticles = (float)atof(e); }
 		{ const char* e = getenv("GENERALS_SHADOWS"); if (e && e[0] == '0') g_sh.on = false; }
 		{ const char* e = getenv("GENERALS_POST"); if (e) B.postOn = e[0] != '0'; }
 		{ const char* e = getenv("GENERALS_BLOOM"); if (e) g_postCfg.bloomIntensity = (float)atof(e); e = getenv("GENERALS_FXAA"); if (e && e[0] == '0') g_postCfg.fxaa = false; e = getenv("GENERALS_AO"); if (e) g_postCfg.aoStrength = (float)atof(e); }
@@ -1619,6 +1626,11 @@ private:
 		const bool pretransformed = (fvf & 0xE) == 0x4;
 		// the full screen shadow quad of the stencil shadows is pre-transformed too but still belongs to the 3D scene
 
+		const bool softWanted = g_softDraw && B.postOn && B.stage == 0 && !B.curTarget && !pretransformed && g_postCfg.softParticles > 0.0f && B.depthCopy
+			&& m_renderStates[D3DRS_ALPHABLENDENABLE] && !m_renderStates[D3DRS_ZWRITEENABLE] && m_renderStates[D3DRS_ZENABLE];
+		if (softWanted && !B.depthCopyDone && (B.rendering || B.depthLoaded))
+			MakeDepthCopy();
+		const bool soft = softWanted && B.depthCopyDone;
 		if (!EnsureRendering()) { ++g_cnt[13]; return D3D_OK; }
 		if (!pretransformed && !B.curTarget)
 		{
@@ -1685,6 +1697,12 @@ private:
 			u.pointScale[0] = f(D3DRS_POINTSCALE_A); u.pointScale[1] = f(D3DRS_POINTSCALE_B); u.pointScale[2] = f(D3DRS_POINTSCALE_C);
 			u.pointScale[3] = m_renderStates[D3DRS_POINTSCALEENABLE] ? 1.0f : 0.0f;
 			if (u.pointParams[0] == 0.0f) u.pointParams[0] = 1.0f;
+		}
+		if (soft)
+		{
+			u.softA[0] = m_matrix[3][10]; u.softA[1] = m_matrix[3][14]; u.softA[2] = g_postCfg.softParticles;
+			u.softA[3] = m_renderStates[D3DRS_SRCBLEND] == 2 ? 2.0f : 1.0f;		// additive style blends fade the colour, the others the alpha
+			u.softB[0] = (float)B.extent.width; u.softB[1] = (float)B.extent.height;
 		}
 		u.flags[0] = pretransformed ? 1 : 0;
 		u.flags[2] = m_renderStates[D3DRS_ALPHAFUNC]; u.flags[3] = m_renderStates[D3DRS_ALPHATESTENABLE] ? 1 : 0;
@@ -1808,7 +1826,8 @@ private:
 
 		VkDescriptorBufferInfo ubo{ B.ring, uOff, sizeof(DrawUbo) };
 		VkDescriptorImageInfo imgs[8];
-		VkWriteDescriptorSet w[10] = {};
+		VkWriteDescriptorSet w[11] = {};
+		VkDescriptorImageInfo depthImg{ GetSampler(1, 1, 0, 3, 3, 1), soft ? B.depthCopy->view : B.white->view, soft ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 		const int stageCount = waterKind ? 7 : 4;
 		w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[0].pBufferInfo = &ubo;
 		for (int s = 0; s < stageCount; ++s)
@@ -1823,6 +1842,9 @@ private:
 		}
 		VkDescriptorBufferInfo psUbo{ B.ring, 0, 512 };
 		uint32_t writes = 1 + stageCount;
+		w[writes].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[writes].dstBinding = 8; w[writes].descriptorCount = 1;
+		w[writes].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[writes].pImageInfo = &depthImg;
+		++writes;
 		if (waterKind)
 		{
 			const VkDeviceSize pOff = ((B.ringCursor + B.uboAlign - 1) / B.uboAlign) * B.uboAlign;
@@ -1949,10 +1971,12 @@ void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ)
 	B.projCaptured = false;
 	if (!B.ready || !B.postOn || !B.hdr || B.stage == 0) return;
 	EndPass();
-	B.stage = 0; B.scene3D = true; B.colorLoaded = false; B.depthLoaded = false;
+	B.stage = 0; B.scene3D = true; B.colorLoaded = false; B.depthLoaded = false; B.depthCopyDone = false;
 }
 bool VkGfx_ShadowMapsActive() { return g_sh.on && B.postOn && B.ready; }
 void VkGfx_SuppressSceneDraws(bool s) { g_sh.suppress = s; }
+void VkGfx_SoftDraws(bool soft) { g_softDraw = soft; }
+bool VkGfx_SoftDrawsActive() { return g_softDraw; }
 void VkGfx_EndScene3D()
 {
 	if (!B.ready || !B.postOn || B.stage != 0) return;
@@ -1968,6 +1992,8 @@ IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT) { return nullptr; }
 void VkGfx_BeginScene3D(float, float, float) {}
 bool VkGfx_ShadowMapsActive() { return false; }
 void VkGfx_SuppressSceneDraws(bool) {}
+void VkGfx_SoftDraws(bool) {}
+bool VkGfx_SoftDrawsActive() { return false; }
 void VkGfx_EndScene3D() {}
 
 #endif
