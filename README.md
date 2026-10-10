@@ -37,7 +37,7 @@ Not affiliated with, or endorsed by, Electronic Arts. *Command & Conquer*, *Gene
 3. [What was tested](#what-was-tested)
 4. [Requirements](#requirements)
 5. [Building](#building)
-6. [Installing into your game folder](#installing-into-your-game-folder)
+6. [Quick install (release.zip)](#quick-install-releasezip) and [building and installing it yourself](#building-and-installing-it-yourself)
 7. [Running](#running)
 8. [All settings and flags](#all-settings-and-flags)
 9. [How the enhancements work](#how-the-enhancements-work)
@@ -146,7 +146,24 @@ Notes
   water HLSL run `scripts\compile-shaders.ps1` (needs `fxc.exe` from the Windows SDK).
 - `tools/dxvk/0001-*.patch` is the whole DXVK change (a few lines in `src/d3d9/d3d9_device.cpp`).
 
-## Installing into your game folder
+## Quick install (release.zip)
+
+The easiest way: use the prebuilt [`release.zip`](release.zip) from this repository. It contains the 64-bit program, the DXVK DLLs, the two launchers and
+an install note, but **no game files** (you need your own Zero Hour 1.04 and a GPU/driver with Vulkan 1.3).
+
+1. Download `release.zip` and unzip **everything into your Zero Hour folder** (the one that contains `generalszh.exe` and the `.big` files).
+   You get `x64\`, `Play-Updated.bat`, `Play-Original.bat`, `Install-OptionsMenu.bat` and `tools\`.
+2. Start **`Play-Updated.bat`** (updated graphics) or **`Play-Original.bat`** (original rendering, handy for comparing). Always start the game through
+   these files, not through `x64\generalszh64.exe`, and never copy that file over your original `generalszh.exe`.
+3. Both start windowed. Remove `-win` inside the `.bat` for fullscreen. Set your resolution in the in-game options or in `Options.ini`.
+4. Optional: run `Install-OptionsMenu.bat` (needs Python 3) to get the graphics check boxes in *Options > advanced display options*. It reads the menu from
+   your own game files and writes a patched copy as a loose file. Without it every effect is still available through `Options.ini` (see below).
+
+To uninstall delete the `x64` and `tools` folders, the `.bat` files and, if you used step 4, the loose `Window` folder.
+`release.zip` is made by `tools\make-release.ps1` from a finished build; it was built from the state of this repository at the time of the commit that added it.
+The sections below explain how to build it yourself and install that build.
+
+## Building and installing it yourself
 
 ```powershell
 powershell -File tools\install-to-game.ps1 -GameDir "D:\Games\Command and Conquer Generals Zero Hour"
@@ -216,6 +233,11 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 | `CloudDensity` | `0.85` | Opacity of the clouds. |
 | `CloudSpeed` | `1` | Drift speed. |
 | `CloudShadowStrength` | `0.85` | How dark the cloud shadows are, 0 to 1. |
+| `DynamicLights` | `yes` | Explosions, impacts and other light pulses of the game light the ground and units around them, wash out the sun's shadows nearby, and the strongest one casts shadows of its own. |
+| `DynamicLightStrength` | `1.0` | Brightness of those lights. |
+| `AnisotropicFiltering` | `16` | Texture sharpness at shallow viewing angles (0 or 1 = off, up to 16). |
+| `PixelLighting` | `yes` | Per-pixel lighting of units and buildings with a soft sun highlight and a faint rim light. |
+| `SpecularStrength` | `0.30` | Strength of that highlight and rim light. |
 | `Resolution` | game default | Use a resolution your display really supports at fullscreen. |
 
 ### Environment variables (override Options.ini; mostly for development)
@@ -230,6 +252,15 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 | `GENERALS_BLOOM` | bloom strength (default 0.16, `0` = off). |
 | `GENERALS_AO` | ambient occlusion strength (default 0.85, `0` = off). |
 | `GENERALS_FXAA` | `0` disables FXAA. |
+| `GENERALS_LIGHTS` | `0` disables the dynamic lights of explosions; `GENERALS_LIGHTSTRENGTH` scales them. |
+| `GENERALS_PIXELLIGHT` | `0` switches back to per-vertex lighting. |
+| `GENERALS_ANISO` | anisotropic filtering level, `0` = off. |
+| `GENERALS_SHOTS`, `GENERALS_SHOTDIR`, `GENERALS_SHOTTAG` | timed screenshots: game times in seconds (`4,8,12`), target folder and file prefix. The interface is left out of the pictures unless `GENERALS_SHOTUI` is set. Used by `tools\compare-screenshots.ps1`. |
+| `GENERALS_TESTLIGHT` | debugging: `x,y` (screen position from -1 to 1) puts a test light on the ground there. |
+
+### Comparing the renderers
+
+`tools\compare-screenshots.ps1 -GameDir "<game folder>" [-Times "4,8,12,16,20"]` starts the game once with the original and once with the updated graphics and takes screenshots of the intro scene (the 3D scene behind the main menu) at the same game times (30 logic frames per second, so the same moment of the scene). It writes `original_<frame>.png`, `updated_<frame>.png` and `compare_<frame>.png` (original on the left) to `docs\screenshots` (not committed). The sun is fixed for the comparison, and the clouds follow game time, so repeated runs match. Needs Python with Pillow.
 
 ### Command line flags
 

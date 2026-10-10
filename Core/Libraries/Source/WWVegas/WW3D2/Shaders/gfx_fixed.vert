@@ -37,10 +37,16 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	uvec4 texGen[8];       // per stage: x = source (0 vertex set, 1 camera normal, 2 camera position, 3 reflection), y = vertex set, z = transform count (0 off), w = 1 projected
 	vec4 pointParams;      // size, min size, max size, 1 when point sprites are on
 	vec4 pointScale;       // attenuation A, B, C, 1 when scaling is on
+	vec4 softA;
+	vec4 softB;
+	vec4 camPos;           // xyz: camera in world space, w: strength of the per pixel highlight (0 = lighting stays per vertex)
 } draw;
 
 layout(location = 0) out vec4 vDiffuse;
 layout(location = 1) out vec4 vUv[8];
+layout(location = 9) out vec4 vWorldPos;		// xyz world position, w = 1 when the pixel shader does the lighting
+layout(location = 10) out vec3 vWorldNormal;
+layout(location = 11) out vec4 vRawDiffuse;		// vertex colour as it came in (material source for the per pixel lighting)
 
 vec4 vertexUvSet(uint k)
 {
@@ -106,6 +112,9 @@ vec4 lit(vec3 worldPos, vec3 worldNormal)
 void main()
 {
 	vDiffuse = inDiffuse;
+	vWorldPos = vec4(0.0);
+	vWorldNormal = vec3(0.0, 0.0, 1.0);
+	vRawDiffuse = inDiffuse;
 	for (uint i = 0u; i < 8u; ++i)
 		vUv[i] = stageCoordinates(i);
 
@@ -133,6 +142,15 @@ void main()
 		}
 		gl_PointSize = clamp(size, max(draw.pointParams.y, 1.0), min(max(draw.pointParams.z, 1.0), max(0.011 * draw.alphaRef.y, 8.0)));		// never bigger than about 1.1% of the view height
 		if (draw.lightFlags.x != 0u)
-			vDiffuse = lit((draw.world * vec4(inPos.xyz, 1.0)).xyz, mat3(draw.world) * inNormal.xyz);
+		{
+			vec3 wp = (draw.world * vec4(inPos.xyz, 1.0)).xyz;
+			vec3 wn = mat3(draw.world) * inNormal.xyz;
+			vDiffuse = lit(wp, wn);
+			if (draw.camPos.w > 0.0)
+			{
+				vWorldPos = vec4(wp, 1.0);
+				vWorldNormal = wn;
+			}
+		}
 	}
 }

@@ -5,6 +5,7 @@
 //   BLOOM_UP     up sample, added onto the next larger level
 //   COMPOSITE    scene + bloom, soft highlight roll-off and colour grading
 //   FXAA         edge anti-aliasing of the finished image
+//   LIGHTS       light pulses of the game (explosions, impacts) lighting the scene around them, in screen space; the strongest one casts shadows
 
 layout(std140, set = 0, binding = 0) uniform Post
 {
@@ -21,6 +22,9 @@ layout(std140, set = 0, binding = 0) uniform Post
 	vec4 cloudA;        // cloud base height, thickness, coverage, density
 	vec4 cloudB;        // time in seconds, speed, shadow strength, shadows on
 	vec4 cloudC;        // visible clouds on, fade range above the base, camera height
+	vec4 lightCfg;      // number of lights, strength, shadow bias, unused
+	vec4 lightPos[12];  // xyz world position, w range
+	vec4 lightCol[12];
 } u;
 
 layout(set = 0, binding = 1) uniform sampler2D t0;
@@ -33,7 +37,7 @@ layout(location = 0) out vec4 outColor;
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-#if defined(PASS_AO) || defined(PASS_AOBLUR) || defined(PASS_SHADOW) || defined(PASS_CLOUDS)
+#if defined(PASS_AO) || defined(PASS_AOBLUR) || defined(PASS_SHADOW) || defined(PASS_CLOUDS) || defined(PASS_LIGHTS)
 
 // view space depth of a depth buffer value; the sign of the projection's [2][3] element is in p2.w
 float viewZ(float d) { return u.proj.w / (u.p2.w * d - u.proj.z); }
@@ -143,6 +147,68 @@ void main()
 	outColor = vec4(col * fade, (1.0 - T) * fade);
 }
 
+#elif defined(PASS_LIGHTS)
+
+// shadow of the strongest light: a perspective depth map seen from a virtual lamp above it (lightVP); shadowParams: map size, depth constants A and B (depth = A + B / distance)
+float lightShadow(vec3 Pw)
+{
+	if (u.shadowParams.x < 1.0) return 1.0;
+	vec4 lc = u.lightVP * vec4(Pw, 1.0);
+	if (lc.w <= 1.0) return 1.0;
+	vec3 n = lc.xyz / lc.w;
+	vec2 suv = vec2(n.x * 0.5 + 0.5, 0.5 - n.y * 0.5);
+	if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) return 1.0;
+	float zd = lc.w;
+	float bias = 1.5 + 0.03 * zd;
+	float ang = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+	mat2 rot = mat2(cos(ang), sin(ang), -sin(ang), cos(ang));
+	const vec2 disk[8] = vec2[](vec2(0.1, 0.2), vec2(-0.5, 0.15), vec2(0.4, -0.35), vec2(-0.15, -0.6), vec2(0.7, 0.3), vec2(-0.75, -0.2), vec2(0.25, 0.75), vec2(-0.4, 0.65));
+	float lit = 0.0;
+	for (int i = 0; i < 8; ++i)
+	{
+		float d = texture(t1, suv + rot * disk[i] * (2.5 / u.shadowParams.x)).r;
+		float zs = u.shadowParams.z / (d - u.shadowParams.y);
+		lit += (zd - zs < bias) ? 1.0 : 0.0;
+	}
+	return lit / 8.0;
+}
+
+void main()
+{
+	float d = texture(t0, uv).r;
+	if (d >= 0.99999) { outColor = vec4(0.0, 0.0, 0.0, 1.0); return; }		// no depth (sky, water): unchanged
+	vec2 px = u.texel.xy;
+	vec3 P = viewPos(uv);
+	vec3 Pr = viewPos(uv + vec2(px.x, 0.0)), Pl = viewPos(uv - vec2(px.x, 0.0));
+	vec3 Pu = viewPos(uv - vec2(0.0, px.y)), Pd = viewPos(uv + vec2(0.0, px.y));
+	vec3 dx = abs(Pr.z - P.z) < abs(P.z - Pl.z) ? Pr - P : P - Pl;
+	vec3 dy = abs(Pu.z - P.z) < abs(P.z - Pd.z) ? Pu - P : P - Pd;
+	vec3 n = normalize(cross(dx, dy));
+	if (dot(n, -P) < 0.0) n = -n;
+	vec3 Pw = (u.invView * vec4(P, 1.0)).xyz;
+	vec3 nw = normalize((u.invView * vec4(n, 0.0)).xyz);
+	vec3 sum = vec3(0.0);
+	int count = int(u.lightCfg.x);
+	for (int i = 0; i < 12; ++i)
+	{
+		if (i >= count) break;
+		vec3 L = u.lightPos[i].xyz - Pw;
+		float dist = length(L);
+		float r = u.lightPos[i].w;
+		if (dist >= r) continue;
+		float att = 1.0 - dist / r;
+		att *= att;
+		float ndl = dot(nw, L / max(dist, 1e-3));
+		float facing = 0.4 + 0.6 * clamp(ndl * 0.5 + 0.5, 0.0, 1.0);
+		float vis = i == 0 ? lightShadow(Pw) : 1.0;
+		sum += u.lightCol[i].rgb * att * facing * vis;
+	}
+	sum = min(sum * u.lightCfg.y, vec3(6.0));
+	if (any(isnan(sum))) sum = vec3(0.0);
+	// blend: scene * alpha + rgb  ->  brightens the surface by its own colour and adds a little of the light's colour on top
+	outColor = vec4(sum * 0.12, 1.0 + 1.2 * dot(sum, vec3(0.3, 0.5, 0.2)));
+}
+
 #elif defined(PASS_SHADOW)
 
 const vec2 kDisk[24] = vec2[](
@@ -151,10 +217,10 @@ const vec2 kDisk[24] = vec2[](
 	vec2(-0.58, -0.62), vec2(0.88, 0.1), vec2(-0.1, 0.92), vec2(0.62, -0.7), vec2(-0.9, -0.1), vec2(0.3, 0.95),
 	vec2(-0.5, 0.82), vec2(0.95, 0.38), vec2(-0.25, -0.95), vec2(0.7, 0.72), vec2(-0.95, 0.5), vec2(0.15, -0.5));
 
-void main()
+float visibility()
 {
 	float d = texture(t0, uv).r;
-	if (d >= 0.99999) { outColor = vec4(1.0); return; }
+	if (d >= 0.99999) return 1.0;
 	vec3 P = viewPos(uv);
 	vec3 Pw = (u.invView * vec4(P, 1.0)).xyz;
 
@@ -171,10 +237,10 @@ void main()
 	}
 	float strength = u.p0.w;
 
-	if (u.shadowParams.x < 1.0) { outColor = vec4(cs, 0.0, 0.0, 1.0); return; }
+	if (u.shadowParams.x < 1.0) return cs;
 	vec4 lc = u.lightVP * vec4(Pw, 1.0);
 	vec2 suv = vec2(lc.x * 0.5 + 0.5, 0.5 - lc.y * 0.5);
-	if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || lc.z > 1.0) { outColor = vec4(cs, 0.0, 0.0, 1.0); return; }
+	if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || lc.z > 1.0) return cs;
 
 	float size = u.shadowParams.x;
 	float range = u.shadowParams.z;
@@ -195,7 +261,7 @@ void main()
 		float sd = texture(t1, suv + o).r;
 		if (sd < zr) { sum += sd; cnt += 1.0; }
 	}
-	if (cnt < 0.5) { outColor = vec4(cs, 0.0, 0.0, 1.0); return; }
+	if (cnt < 0.5) return cs;
 	float zb = sum / cnt;
 	// penumbra: grows with the distance between caster and receiver
 	float penWorld = (zr - zb) * range * lightSize;
@@ -206,7 +272,28 @@ void main()
 		vec2 o = rot * kDisk[i] * rUV;
 		lit += (texture(t1, suv + o).r < zr) ? 0.0 : 1.0;
 	}
-	outColor = vec4(mix(1.0, lit / 24.0, strength * cs * cs) * cs, 0.0, 0.0, 1.0);		// object shadows fade out where a cloud already blocks the sun
+	return mix(1.0, lit / 24.0, strength * cs * cs) * cs;		// object shadows fade out where a cloud already blocks the sun
+}
+
+void main()
+{
+	float v = visibility();
+	float d = texture(t0, uv).r;
+	if (d < 0.99999 && u.lightCfg.x > 0.5)
+	{
+		// light pulses wash out the sun's shadows around them
+		vec3 Pw = (u.invView * vec4(viewPos(uv), 1.0)).xyz;
+		float wash = 0.0;
+		for (int i = 0; i < 12; ++i)
+		{
+			if (i >= int(u.lightCfg.x)) break;
+			float dist = length(u.lightPos[i].xyz - Pw);
+			float att = clamp(1.0 - dist / u.lightPos[i].w, 0.0, 1.0);
+			wash += att * att * dot(u.lightCol[i].rgb, vec3(0.3, 0.5, 0.2)) * u.lightCfg.y;
+		}
+		v = mix(v, 1.0, clamp(wash * 1.4, 0.0, 0.92));
+	}
+	outColor = vec4(v, 0.0, 0.0, 1.0);
 }
 
 #elif defined(PASS_AO)

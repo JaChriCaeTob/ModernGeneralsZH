@@ -1,0 +1,9 @@
+Zero Hour x64 + Vulkan renderer (experimental). Replaces DirectX 8 with a native Vulkan renderer and builds the game as 64-bit. Optional extras: unlocked FPS (no game speed-up), soft dynamic shadows, cloud shadows, reworked water, shockwaves, ambient occlusion, bloom, explosion lights, 16x filtering. Gameplay is untouched. Based on the community fix version.
+
+NOT actively developed. Feel free to fork it and work on it yourself (GitHub: JaChriCaeTob/ModernGeneralsZH). Written entirely by Claude Code; I only had the idea.
+
+Install: needs your own Zero Hour 1.04 and a Vulkan 1.3 GPU. Copy the x64 folder and the two .bat files into the game folder, start Play-Updated.bat (Play-Original.bat = old rendering).
+
+Tested: RTX 4070 Ti, Windows 11, German EA App, menu and skirmish. Not tested: campaign, multiplayer (don't use online), AMD/Intel.
+
+Known bugs: some audio clips play weirdly; dynamic shadows draw above some effects.

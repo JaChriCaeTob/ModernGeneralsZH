@@ -843,6 +843,11 @@ void W3DDisplay::init()
 			gs.cloudDensity = number("CloudDensity", gs.cloudDensity);
 			gs.cloudSpeed = number("CloudSpeed", gs.cloudSpeed);
 			gs.cloudShadowStrength = number("CloudShadowStrength", gs.cloudShadowStrength);
+			gs.dynamicLights = flag("DynamicLights", true);
+			gs.dynamicLightStrength = number("DynamicLightStrength", gs.dynamicLightStrength);
+			gs.anisotropy = (int)number("AnisotropicFiltering", (float)gs.anisotropy);
+			gs.pixelLighting = flag("PixelLighting", true);
+			gs.specularStrength = number("SpecularStrength", gs.specularStrength);
 			VkGfx_Configure(gs);
 		}
 		if (WW3D::Init( ApplicationHWnd ) != WW3D_ERROR_OK)
@@ -1865,6 +1870,34 @@ void W3DDisplay::step()
 /** Draw the entire W3D Display */
 //=============================================================================
 //DECLARE_PERF_TIMER(W3DDisplay_draw)
+// Timed screenshots for comparing renderers: GENERALS_SHOTS="2,4,6" (seconds of game time, 30 logic frames each), GENERALS_SHOTDIR, GENERALS_SHOTTAG
+static Bool timedScreenshotDue( char *path, size_t size )
+{
+	static std::vector<UnsignedInt> frames;
+	static size_t next = 0;
+	static Bool parsed = FALSE;
+	if (!parsed)
+	{
+		parsed = TRUE;
+		if (const char *e = getenv( "GENERALS_SHOTS" ))
+		{
+			for (const char *p = e; *p; )
+			{
+				frames.push_back( (UnsignedInt)(atof( p ) * 30.0 + 0.5) );
+				const char *c = strchr( p, ',' );
+				if (!c) break;
+				p = c + 1;
+			}
+		}
+	}
+	if (next >= frames.size() || !TheGameLogic || TheGameLogic->getFrame() < frames[next])
+		return FALSE;
+	const char *dir = getenv( "GENERALS_SHOTDIR" ), *tag = getenv( "GENERALS_SHOTTAG" );
+	snprintf( path, size, "%s/%s_%04u.bmp", dir ? dir : ".", tag ? tag : "shot", (unsigned)frames[next] );
+	++next;
+	return TRUE;
+}
+
 void W3DDisplay::draw()
 {
 	//USE_PERF_TIMER(W3DDisplay_draw)
@@ -2052,22 +2085,38 @@ AGAIN:
 				if (numRenderTargetPolygons || numRenderTargetVertices)
 					Debug_Statistics::Record_DX8_Polys_And_Vertices(numRenderTargetPolygons,numRenderTargetVertices,ShaderClass::_PresetOpaqueShader);
 
+				if (TheGameLogic)
+					VkGfx_SetGameTime( (Real)TheGameLogic->getFrame() / 30.0f );
+				char shotPath[MAX_PATH];
+				const Bool takeShot = timedScreenshotDue( shotPath, sizeof(shotPath) );
+				if (takeShot && VkGfx_NativeActive())
+					VkGfx_RequestScreenshot( shotPath );
+
 				// draw all views of the world (post processed by the native Vulkan backend, if it is in use)
 				{
 					const Coord3D &sunLight = TheGlobalData->m_terrainLightPos[0];
+					{
+						const GlobalData::TerrainLighting &light = TheGlobalData->m_terrainObjectsLighting[TheGlobalData->m_timeOfDay][0];
+						const float ambient[3] = { light.ambient.red, light.ambient.green, light.ambient.blue };
+						const float diffuse[3] = { light.diffuse.red, light.diffuse.green, light.diffuse.blue };
+						VkGfx_SetSceneLighting(ambient, diffuse);
+					}
 					VkGfx_BeginScene3D(-sunLight.x, -sunLight.y, -sunLight.z);
 				}
 				drawViews();
 				VkGfx_EndScene3D();
 
-				// draw the user interface
-				TheInGameUI->DRAW();
+				// draw the user interface (not on timed screenshot frames: they show the bare 3D scene)
+				if (!takeShot || getenv( "GENERALS_SHOTUI" ))		// GENERALS_SHOTUI keeps the interface in the screenshots
+				{
+					TheInGameUI->DRAW();
 
-				TheGameClient->DRAW();
+					TheGameClient->DRAW();
 
-				// draw the mouse
-				if( TheMouse )
-					TheMouse->DRAW();
+					// draw the mouse
+					if( TheMouse )
+						TheMouse->DRAW();
+				}
 
 				if ( m_videoStream && m_videoBuffer )
 				{
@@ -2112,6 +2161,9 @@ AGAIN:
 					// draw the current debug display
 					drawCurrentDebugDisplay();
 				}
+
+				if (takeShot && !VkGfx_NativeActive())
+					takeScreenShot( SCREENSHOT_PNG, 100 );		// classic renderer: the game's own screenshot (user data folder, Screenshots)
 
 #if defined(RTS_DEBUG)
 				if (TheGlobalData->m_benchmarkTimer > 0)

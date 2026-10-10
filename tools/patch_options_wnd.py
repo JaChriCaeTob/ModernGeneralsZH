@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds a patched Window/Menus/OptionsMenu.wnd with a "graphics enhancements" group (a header and six check boxes) in the advanced
+"""Builds a patched Window/Menus/OptionsMenu.wnd with a "graphics enhancements" group (a header and twelve check boxes in four columns) in the advanced
 display pane. The original file is read from the game's WindowZH.big; the result is written as a loose file into the game folder
 (loose files win over archives), so no original data is modified or redistributed.
 
@@ -34,13 +34,13 @@ def shift_window(t, xy, dy):
 
 # make room for the group below the original check boxes
 for rect in [(160, 312), (172, 315), (240, 355), (427, 375), (160, 342), (160, 375)]:
-    text = shift_window(text, rect, 60)
+    text = shift_window(text, rect, 61)
 for rect in [(160, 416), (172, 419), (160, 476), (412, 476), (160, 445), (240, 459)]:
-    text = shift_window(text, rect, 48)
+    text = shift_window(text, rect, 49)
 for rect in [(295, 521), (466, 521)]:
-    text = shift_window(text, rect, 36)
-text = re.sub(r'(SCREENRECT = UPPERLEFT: 151 68,\s*BOTTOMRIGHT: 636 )560', r'\g<1>596', text, count=1)
-text = re.sub(r'(SCREENRECT = UPPERLEFT: 160 112,\s*BOTTOMRIGHT: 622 )301', r'\g<1>380', text, count=1)
+    text = shift_window(text, rect, 37)
+text = re.sub(r'(SCREENRECT = UPPERLEFT: 151 68,\s*BOTTOMRIGHT: 636 )560', r'\g<1>597', text, count=1)
+text = re.sub(r'(SCREENRECT = UPPERLEFT: 160 112,\s*BOTTOMRIGHT: 622 )301', r'\g<1>381', text, count=1)
 
 
 def block_around(t, index):
@@ -66,13 +66,15 @@ anchor = None
 # header: a static text cloned from the one above the original check boxes
 hdr_find = 'UPPERLEFT: 167 112'
 hs, he = block_around(text, text.index(hdr_find))
-_, blk = clone(text, hdr_find, 'EnhancementsHeader', 160, 298, 462, 24)
+_, blk = clone(text, hdr_find, 'EnhancementsHeader', 160, 298, 462, 16)
 new_blocks += blk
 # check boxes cloned from "smooth water"
 cb_find = 'NAME = "OptionsMenu.wnd:CheckSmoothWater"'
-for name, x, y in [('CheckSoftShadows', 168, 324), ('CheckAmbientOcclusion', 322, 324), ('CheckBloom', 476, 324),
-                   ('CheckFXAA', 168, 348), ('CheckUpdatedWater', 322, 348), ('CheckShockwaves', 476, 348)]:
-    anchor, blk = clone(text, cb_find, name, x, y, 150, 24)
+names = ['CheckSoftShadows', 'CheckAmbientOcclusion', 'CheckBloom', 'CheckFXAA', 'CheckUpdatedWater', 'CheckShockwaves',
+         'CheckDynLights', 'CheckPixelLight', 'CheckAniso', 'CheckVkClouds', 'CheckVkCloudShadows']
+for i, name in enumerate(names):
+    x, y = 168 + 112 * (i % 4), 316 + 19 * (i // 4)
+    anchor, blk = clone(text, cb_find, name, x, y, 110, 19)
     new_blocks += blk
 text = text[:anchor] + new_blocks + text[anchor:]
 

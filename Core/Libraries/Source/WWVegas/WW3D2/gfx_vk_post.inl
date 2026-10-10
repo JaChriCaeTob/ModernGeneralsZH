@@ -4,11 +4,13 @@
 // the scene goes through bloom, a soft highlight roll-off, colour grading and FXAA and lands in the swapchain image; the interface
 // is then drawn straight onto the swapchain ("stage 1") so text and icons are never filtered.
 
-enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_SHADOW, PASS_CLOUDS, PASS_COUNT };
+static const int kMaxScreenLights = 12;
+enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_SHADOW, PASS_CLOUDS, PASS_LIGHTS, PASS_COUNT };
 
 static void RigidInverse(const float* m, float* out);
 struct PostUbo;
 GpuTexture* ShadowStage(const PostUbo& base);
+GpuTexture* RenderLightShadow(PostUbo& c);
 bool ShadowsEnabled();
 
 struct PostUbo
@@ -24,6 +26,9 @@ struct PostUbo
 	float shadowParams[4];
 	float viewRect[4];		// x, y, width, height in pixels of the viewport the 3D scene was drawn with
 	float cloudA[4], cloudB[4], cloudC[4];
+	float lightCfg[4];		// number of lights, strength
+	float lightPos[kMaxScreenLights][4];		// xyz position, w range
+	float lightCol[kMaxScreenLights][4];
 };
 
 void Multiply(const float* a, const float* b, float* out)	// row-major 4x4: out = a * b
@@ -57,6 +62,7 @@ struct ShadowState
 	float lightVP[16] = {};
 	float range = 1.0f, mapWorld = 1.0f;
 	GpuTexture* map = nullptr;
+	GpuTexture* lmap = nullptr;			// shadow map of the strongest dynamic light
 	GpuTexture* vis = nullptr;
 	uint32_t mapSize = 4096;
 	float lightSize = 0.050f, strength = 0.58f;
@@ -165,6 +171,11 @@ VkPipeline GetPostPipe(int pass, VkFormat fmt, int blendMode)
 		cba.blendEnable = VK_TRUE; cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.colorBlendOp = VK_BLEND_OP_ADD;
 		cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE; cba.alphaBlendOp = VK_BLEND_OP_ADD;
 	}
+	else if (blendMode == 3)		// light: scene * source alpha + source colour
+	{
+		cba.blendEnable = VK_TRUE; cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA; cba.colorBlendOp = VK_BLEND_OP_ADD;
+		cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE; cba.alphaBlendOp = VK_BLEND_OP_ADD;
+	}
 	else if (blendMode == 2)		// premultiplied colour over the scene
 	{
 		cba.blendEnable = VK_TRUE; cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; cba.colorBlendOp = VK_BLEND_OP_ADD;
@@ -198,7 +209,8 @@ bool CreatePostShaders()
 	struct { const unsigned int* code; size_t size; } fs[PASS_COUNT] = {
 		{ g_gfxPostBloomDown0Frag, sizeof(g_gfxPostBloomDown0Frag) }, { g_gfxPostBloomDownFrag, sizeof(g_gfxPostBloomDownFrag) },
 		{ g_gfxPostBloomUpFrag, sizeof(g_gfxPostBloomUpFrag) }, { g_gfxPostCompositeFrag, sizeof(g_gfxPostCompositeFrag) },
-		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) }, { g_gfxPostAoFrag, sizeof(g_gfxPostAoFrag) }, { g_gfxPostAoBlurFrag, sizeof(g_gfxPostAoBlurFrag) }, { g_gfxPostShadowFrag, sizeof(g_gfxPostShadowFrag) }, { g_gfxPostCloudsFrag, sizeof(g_gfxPostCloudsFrag) } };
+		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) }, { g_gfxPostAoFrag, sizeof(g_gfxPostAoFrag) }, { g_gfxPostAoBlurFrag, sizeof(g_gfxPostAoBlurFrag) }, { g_gfxPostShadowFrag, sizeof(g_gfxPostShadowFrag) }, { g_gfxPostCloudsFrag, sizeof(g_gfxPostCloudsFrag) },
+		{ g_gfxPostLightsFrag, sizeof(g_gfxPostLightsFrag) } };
 	for (int i = 0; i < PASS_COUNT; ++i)
 	{
 		smi.codeSize = fs[i].size; smi.pCode = fs[i].code;
@@ -294,8 +306,48 @@ void FillCloudUbo(PostUbo& a, const float* invView)
 	memcpy(a.invView, invView, 64);
 	a.sunDir[0] = g_sh.sun[0]; a.sunDir[1] = g_sh.sun[1]; a.sunDir[2] = g_sh.sun[2];
 	a.cloudA[0] = g_cloud.base; a.cloudA[1] = g_cloud.thickness; a.cloudA[2] = g_cloud.coverage; a.cloudA[3] = g_cloud.density;
-	a.cloudB[0] = (float)(GetTickCount() % 3600000) * 0.001f; a.cloudB[1] = g_cloud.speed; a.cloudB[2] = g_cloud.shadowStrength; a.cloudB[3] = g_cloud.shadows ? 1.0f : 0.0f;
+	a.cloudB[0] = g_gameTime >= 0.0f ? g_gameTime : (float)(GetTickCount() % 3600000) * 0.001f; a.cloudB[1] = g_cloud.speed; a.cloudB[2] = g_cloud.shadowStrength; a.cloudB[3] = g_cloud.shadows ? 1.0f : 0.0f;
 	a.cloudC[0] = g_cloud.clouds ? 1.0f : 0.0f; a.cloudC[1] = 160.0f;
+}
+
+// Fills the screen space light parameters (the strongest lights first); returns the number of lights.
+int FillLightUbo(PostUbo& a)
+{
+	int numLights = 0;
+	static const bool testLight = getenv("GENERALS_TESTLIGHT") != nullptr;		// debugging: a light 120 units wide where the middle of the screen meets the ground
+	if (testLight && B.haveProj)
+	{
+		float iv[16];
+		RigidInverse(B.lastView, iv);
+		float nx = 0.0f, ny = 0.0f;
+		sscanf(getenv("GENERALS_TESTLIGHT"), "%f,%f", &nx, &ny);
+		const float vx = nx / B.lastProj[0], vy = ny / B.lastProj[5];
+		float dir[3];
+		for (int j = 0; j < 3; ++j) dir[j] = vx * iv[j] + vy * iv[4 + j] - iv[8 + j];
+		const float gz = g_sh.groundZ + 4.0f;
+		if (dir[2] < -0.05f)
+		{
+			const float t = (gz - iv[14]) / dir[2];
+			DynLight l = { { iv[12] + dir[0] * t, iv[13] + dir[1] * t, gz }, { 1.0f, 0.7f, 0.3f }, 120.0f };
+			g_fx.lights.push_back(l);
+		}
+	}
+	if (g_cfg.dynamicLights && g_cfg.dynamicLightStrength > 0.0f && !g_fx.lights.empty())
+	{
+		std::vector<const DynLight*> order;
+		for (const DynLight& l : g_fx.lights) order.push_back(&l);
+		std::sort(order.begin(), order.end(), [](const DynLight* x, const DynLight* y) {
+			return x->range * std::max(x->color[0], std::max(x->color[1], x->color[2])) > y->range * std::max(y->color[0], std::max(y->color[1], y->color[2])); });
+		for (const DynLight* l : order)
+		{
+			if (numLights >= kMaxScreenLights) break;
+			a.lightPos[numLights][0] = l->pos[0]; a.lightPos[numLights][1] = l->pos[1]; a.lightPos[numLights][2] = l->pos[2]; a.lightPos[numLights][3] = l->range;
+			a.lightCol[numLights][0] = l->color[0]; a.lightCol[numLights][1] = l->color[1]; a.lightCol[numLights][2] = l->color[2]; a.lightCol[numLights][3] = 0.0f;
+			++numLights;
+		}
+	}
+	a.lightCfg[0] = (float)numLights; a.lightCfg[1] = g_cfg.dynamicLightStrength * 1.3f;
+	return numLights;
 }
 
 // Runs the post processing chain and leaves the swapchain image holding the finished scene, in stage 1 (interface).
@@ -323,7 +375,10 @@ bool RunPostProcess()
 	bool haveAo = false;
 	GpuTexture* shadowVis = nullptr;
 	const bool cloudsOn = g_cloud.shadows || g_cloud.clouds;
-	if (has3D && B.haveProj && B.depthTex && (g_postCfg.aoStrength > 0.0f || ShadowsEnabled() || (cloudsOn && g_sh.haveSun && B.postOn)))
+	const int numLights = B.postOn ? FillLightUbo(ub) : 0;
+	const bool lightsOn = numLights > 0;
+	{ static int n = 0; if (n++ % 300 == 0) Log("fx: lights %d of %u, pixel lighting %d, aniso %d", numLights, (unsigned)g_fx.lights.size(), (int)g_cfg.pixelLighting, g_cfg.anisotropy); }
+	if (has3D && B.haveProj && B.depthTex && (g_postCfg.aoStrength > 0.0f || ShadowsEnabled() || (cloudsOn && g_sh.haveSun && B.postOn) || lightsOn))
 	{
 		// the scene's depth buffer becomes readable
 		ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
@@ -350,6 +405,19 @@ bool RunPostProcess()
 		B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
 		haveAo = true;
 	}
+	// dynamic lights of explosions: the strongest one casts shadows from a lamp above it
+	if (has3D && B.haveProj && B.depthTex && lightsOn)
+	{
+		float iv[16];
+		RigidInverse(B.lastView, iv);
+		PostUbo c = ub;
+		FillCloudUbo(c, iv);
+		GpuTexture* lightMap = g_sh.on ? RenderLightShadow(c) : nullptr;
+		GpuTexture* inK[4] = { B.depthTex, lightMap, nullptr, nullptr };
+		PostDraw(PASS_LIGHTS, 3, inK, c, B.hdr->image, B.hdr->view, B.hdr->format, B.extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true);
+		B.hdr->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.hdr);
+	}
+
 	if (has3D && g_postCfg.bloomIntensity > 0.0f)
 	{
 		// bright pass and down sampling chain

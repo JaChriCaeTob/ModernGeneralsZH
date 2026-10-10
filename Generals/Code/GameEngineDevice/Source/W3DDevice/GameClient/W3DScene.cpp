@@ -49,6 +49,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/GameClient/W3DDynamicLight.h"
+#include "WW3D2/gfx_vulkan.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 #include "W3DDevice/GameClient/W3DStatusCircle.h"
 #include "W3DDevice/GameClient/W3DCustomScene.h"
@@ -1056,6 +1057,24 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 #ifdef DIRTY_CONDITION_FLAGS
 	StDrawableDirtyStuffLocker lockDirtyStuff;
 #endif
+
+	// the native Vulkan renderer lights the scene around explosions and other light pulses in screen space
+	VkGfx_ClearDynamicLights();
+	{
+		RefRenderObjListIterator lightIt(&m_dynamicLightList);
+		for (lightIt.First(); !lightIt.Is_Done(); lightIt.Next())
+		{
+			W3DDynamicLight* pDyna = (W3DDynamicLight*)lightIt.Peek_Obj();
+			if (!pDyna->isEnabled())
+				continue;
+			Vector3 pos = pDyna->Get_Position();
+			Vector3 diffuse;
+			pDyna->Get_Diffuse(&diffuse);
+			const float color[3] = { diffuse.X, diffuse.Y, diffuse.Z };
+			const float where[3] = { pos.X, pos.Y, pos.Z };
+			VkGfx_AddDynamicLight(where, color, pDyna->Get_Attenuation_Range());
+		}
+	}
 
 	RenderObjClass *terrainObject=nullptr,*robj;
 	m_translucentObjectsCount = 0;	//start of new frame so no translucent objects

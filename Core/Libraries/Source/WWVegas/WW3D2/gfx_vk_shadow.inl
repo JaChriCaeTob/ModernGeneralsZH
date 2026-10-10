@@ -21,7 +21,9 @@ bool CreateShadowTargets()
 {
 	g_sh.map = NewTarget(g_sh.mapSize, g_sh.mapSize, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 	g_sh.vis = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+	g_sh.lmap = NewTarget(2048, 2048, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 	if (g_sh.map) g_sh.map->isDepth = true;
+	if (g_sh.lmap) g_sh.lmap->isDepth = true;
 	if (!g_sh.map || !g_sh.vis)
 	{
 		Log("shadow map targets could not be created: shadows are off");
@@ -34,6 +36,7 @@ bool CreateShadowTargets()
 void DestroyShadowTargets()
 {
 	if (g_sh.map) { DestroyGpuTexture(g_sh.map); g_sh.map = nullptr; }
+	if (g_sh.lmap) { DestroyGpuTexture(g_sh.lmap); g_sh.lmap = nullptr; }
 	if (g_sh.vis) { DestroyGpuTexture(g_sh.vis); g_sh.vis = nullptr; }
 }
 
@@ -110,11 +113,11 @@ bool BuildLightMatrix(const float* proj, const float* invView, float groundZ, fl
 
 // ---- shadow map pass ------------------------------------------------------------------------------------------------------
 
-bool RenderShadowMap(const float* lightVP)
+// Replays the recorded opaque draws into a depth map. cullCenter/cullRadius (optional) skip draws whose object origin is farther away; draws in world space (terrain, props) are skipped then.
+bool RenderShadowMap(GpuTexture* m, const float* lightVP, const float* cullCenter = nullptr, float cullRadius = 0.0f)
 {
-	if (!g_sh.map || g_sh.casters.empty())
+	if (!m || g_sh.casters.empty())
 		return false;
-	GpuTexture* m = g_sh.map;
 	ImageBarrier(B.cmd, m->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT,
 		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT, 0,
 		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
@@ -134,6 +137,13 @@ bool RenderShadowMap(const float* lightVP)
 	const VkSampler samp = GetSampler(2, 2, 0, 1, 1, 1);
 	for (const ShadowCaster& c : g_sh.casters)
 	{
+		if (cullCenter)
+		{
+			const float* w = c.u.world;
+			if (w[12] == 0.0f && w[13] == 0.0f && w[14] == 0.0f) continue;
+			const float dx = w[12] - cullCenter[0], dy = w[13] - cullCenter[1];
+			if (dx * dx + dy * dy > cullRadius * cullRadius) continue;
+		}
 		PipeKey key;
 		memset(&key, 0, sizeof(key));
 		key.fvf = c.fvf; key.stride = c.stride; key.topology = c.topology; key.shadow = 1; key.depthTest = 1; key.depthWrite = 1; key.depthFunc = VK_COMPARE_OP_LESS_OR_EQUAL;
@@ -183,6 +193,30 @@ bool RenderShadowMap(const float* lightVP)
 	return true;
 }
 
+// Shadow map of the strongest light pulse: a perspective depth map from a virtual lamp above the light, looking straight down. Fills the light matrix and the
+// depth constants for the lights pass (lightVP, shadowParams: size, A, B with depth = A + B / distance). Returns null when there is nothing to do.
+GpuTexture* RenderLightShadow(PostUbo& c)
+{
+	c.shadowParams[0] = 0.0f;
+	if (!g_sh.lmap || g_sh.casters.empty() || c.lightCfg[0] < 0.5f || c.lightPos[0][3] < 20.0f)
+		return nullptr;
+	const float lx = c.lightPos[0][0], ly = c.lightPos[0][1], range = c.lightPos[0][3];
+	const float h = 0.65f * range;
+	const float lampZ = c.lightPos[0][2] + h;
+	const float nearD = 3.0f, farD = h + 90.0f;
+	const float A = farD / (farD - nearD), Bq = -farD * nearD / (farD - nearD);
+	const float sx = 1.0f / 1.92f;
+	float vp[16] = {};
+	vp[0] = sx; vp[5] = sx; vp[10] = -A; vp[11] = -1.0f;
+	vp[12] = -lx * sx; vp[13] = -ly * sx; vp[14] = A * lampZ + Bq; vp[15] = lampZ;
+	const float center[3] = { lx, ly, c.lightPos[0][2] };
+	if (!RenderShadowMap(g_sh.lmap, vp, center, range * 1.3f + 70.0f))
+		return nullptr;
+	memcpy(c.lightVP, vp, 64);
+	c.shadowParams[0] = (float)g_sh.lmap->width; c.shadowParams[1] = A; c.shadowParams[2] = Bq;
+	return g_sh.lmap;
+}
+
 // ---- receiver pass --------------------------------------------------------------------------------------------------------
 
 // Renders the shadow map and the full screen visibility image (1 = lit). The scene depth must already be readable. Returns the image or null.
@@ -211,7 +245,7 @@ GpuTexture* ShadowStage(const PostUbo& base)
 		if (!BuildLightMatrix(B.lastProj, invView, g_sh.groundZ, vp, range, mapWorld))
 			return nullptr;
 		memcpy(g_sh.lightVP, vp, 64);
-		if (!RenderShadowMap(vp))
+		if (!RenderShadowMap(g_sh.map, vp))
 			return nullptr;
 	}
 	else

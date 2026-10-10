@@ -29,6 +29,7 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	vec4 pointScale;       // attenuation A, B, C, 1 when scaling is on
 	vec4 softA;            // soft particles: projection [2][2], [3][2], fade distance, mode (0 off, 1 fade alpha, 2 fade colour)
 	vec4 softB;            // size in pixels of the depth image
+	vec4 camPos;           // xyz: camera in world space, w: strength of the per pixel highlight (0 = off)
 } draw;
 
 layout(set = 0, binding = 1) uniform sampler2D tex0;
@@ -39,7 +40,51 @@ layout(set = 0, binding = 8) uniform sampler2D depthCopy;
 
 layout(location = 0) in vec4 vDiffuse;
 layout(location = 1) in vec4 vUv[8];
+layout(location = 9) in vec4 vWorldPos;
+layout(location = 10) in vec3 vWorldNormal;
+layout(location = 11) in vec4 vRawDiffuse;
 layout(location = 0) out vec4 outColor;
+
+// Direct3D 8 fixed-function lighting (same as the vertex shader's), evaluated per pixel with the interpolated normal.
+// hl receives the sun highlight and rim light that go on top of the textured colour.
+vec4 litPixel(vec3 worldPos, vec3 worldNormal, out vec3 hl)
+{
+	vec4 diffuse = draw.lightFlags.y != 0u ? vRawDiffuse : draw.matDiffuse;
+	vec4 ambient = draw.lightFlags.z != 0u ? vRawDiffuse : draw.matAmbient;
+	vec4 emissive = draw.lightFlags.w != 0u ? vRawDiffuse : draw.matEmissive;
+	vec3 n = normalize(worldNormal);
+	vec3 v = normalize(draw.camPos.xyz - worldPos);
+	vec3 sum = draw.sceneAmbient.rgb * ambient.rgb;
+	hl = vec3(0.0);
+	for (uint i = 0u; i < draw.lightInfo.x && i < 4u; ++i)
+	{
+		vec3 l;
+		float att = 1.0;
+		if (draw.lightPosType[i].w > 2.5)
+			l = -normalize(draw.lightDirRange[i].xyz);
+		else
+		{
+			vec3 d = draw.lightPosType[i].xyz - worldPos;
+			float dist = length(d);
+			l = d / max(dist, 1e-5);
+			float a = draw.lightAtten[i].x + draw.lightAtten[i].y * dist + draw.lightAtten[i].z * dist * dist;
+			att = (dist <= draw.lightDirRange[i].w || draw.lightDirRange[i].w <= 0.0) ? 1.0 / max(a, 1e-5) : 0.0;
+		}
+		float ndl = max(dot(n, l), 0.0);
+		sum += (draw.lightAmbient[i].rgb * ambient.rgb + draw.lightDiffuse[i].rgb * diffuse.rgb * ndl) * att;
+		// soft highlight of the strongest directional light (the sun), only where the surface faces it
+		if (i == 0u && ndl > 0.0)
+		{
+			vec3 h = normalize(l + v);
+			float s = pow(max(dot(n, h), 0.0), 36.0);
+			hl += draw.lightDiffuse[i].rgb * s * draw.camPos.w * smoothstep(0.0, 0.25, ndl);
+		}
+	}
+	// rim light: a faint sky coloured edge on surfaces seen at a grazing angle, stronger on the side away from the sun
+	float rim = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 3.0);
+	hl += draw.sceneAmbient.rgb * rim * 0.35 * draw.camPos.w * 2.0;
+	return vec4(clamp(emissive.rgb + sum, 0.0, 1.0), diffuse.a);
+}
 
 vec4 sampleStage(uint i, vec4 uv)
 {
@@ -94,6 +139,13 @@ void main()
 {
 	vec4 current = vDiffuse;
 	vec4 diffuse = vDiffuse;
+	vec3 highlight = vec3(0.0);
+	const bool pixelLit = vWorldPos.w > 0.5;
+	if (pixelLit)
+	{
+		diffuse = litPixel(vWorldPos.xyz, vWorldNormal, highlight);
+		current = diffuse;
+	}
 
 	for (uint i = 0u; i < 4u; ++i)
 	{
@@ -151,5 +203,13 @@ void main()
 		if (draw.softA.w > 1.5) current.rgb *= f; else current.a *= f;
 	}
 
+	if (pixelLit)
+	{
+		// the highlight is scaled by the surface colour so dark materials and shadowed areas do not glow; it may exceed 1 (HDR scene, feeds the bloom)
+		float lum = dot(current.rgb, vec3(0.299, 0.587, 0.114));
+		current.rgb += highlight * (0.25 + 0.75 * clamp(lum * 1.6, 0.0, 1.0)) * current.a;
+		outColor = vec4(clamp(current.rgb, 0.0, 2.5), clamp(current.a, 0.0, 1.0));
+		return;
+	}
 	outColor = clamp(current, 0.0, 1.0);
 }

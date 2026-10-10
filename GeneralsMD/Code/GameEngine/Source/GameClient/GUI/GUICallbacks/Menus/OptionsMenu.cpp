@@ -208,8 +208,19 @@ static GameWindow *   checkFXAA             = nullptr;
 static Bool optionFlag(OptionPreferences *p, const char *key, Bool def)
 {
 	OptionPreferences::const_iterator it = p->find(key);
-	return it == p->end() ? def : stricmp(it->second.str(), "no") != 0;
+	return it == p->end() ? def : (stricmp(it->second.str(), "no") != 0 && strcmp(it->second.str(), "0") != 0);
 }
+
+// further check boxes of the native renderer: explosion light, unit highlights, texture sharpness, visible clouds, cloud shadows
+struct NativeOption { const char *window; const char *key; const wchar_t *label; Bool def; GameWindow *win; };
+static NativeOption g_nativeOptions[] =
+{
+	{ "OptionsMenu.wnd:CheckDynLights",   "DynamicLights",        L"Explosion light", TRUE,  nullptr },
+	{ "OptionsMenu.wnd:CheckPixelLight",  "PixelLighting",        L"Unit highlights", TRUE,  nullptr },
+	{ "OptionsMenu.wnd:CheckAniso",       "AnisotropicFiltering", L"Sharp textures", TRUE,  nullptr },
+	{ "OptionsMenu.wnd:CheckVkClouds",    "Clouds",               L"Clouds",         FALSE, nullptr },
+	{ "OptionsMenu.wnd:CheckVkCloudShadows", "CloudShadows",      L"Cloud shadows",  TRUE,  nullptr },
+};
 
 static void applyNativeGraphics(Bool soft, Bool ao, Bool bloom, Bool fxaa)
 {
@@ -409,6 +420,17 @@ static void saveOptions()
 		(*pref)["Bloom"] = bloom ? "yes" : "no";
 		(*pref)["AntiAliasingFXAA"] = fxaa ? "yes" : "no";
 		applyNativeGraphics( soft, ao, bloom, fxaa );
+	}
+	if (VkGfx_NativeActive())
+	{
+		Bool on[5] = {};
+		for (int i = 0; i < 5; ++i)
+		{
+			if (!g_nativeOptions[i].win) continue;
+			on[i] = GadgetCheckBoxIsChecked( g_nativeOptions[i].win );
+			(*pref)[g_nativeOptions[i].key] = i == 2 ? (on[i] ? "16" : "0") : (on[i] ? "yes" : "no");
+		}
+		VkGfx_SetMoreEffectToggles( on[0], on[1], on[2], on[3], on[4] );
 	}
 
 	Int index;
@@ -1107,16 +1129,25 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		checkFXAA             = find( "OptionsMenu.wnd:CheckFXAA" );
 		checkUpdatedWater     = find( "OptionsMenu.wnd:CheckUpdatedWater" );
 		checkShockwaves       = find( "OptionsMenu.wnd:CheckShockwaves" );
+		for (NativeOption &o : g_nativeOptions)
+			o.win = find( o.window );
 		GameWindow *header    = find( "OptionsMenu.wnd:EnhancementsHeader" );
 		const Bool native = VkGfx_NativeActive();
 		if (header)
-			GadgetStaticTextSetText( header, UnicodeString( native ? L"Graphics enhancements" : L"Graphics enhancements (switch GraphicsMode in Options.ini for the rest)" ) );
+			GadgetStaticTextSetText( header, UnicodeString( native ? L"Graphics enhancements   (* applies after a restart)" : L"Graphics enhancements (switch GraphicsMode in Options.ini for the rest)" ) );
 		if (checkSoftShadows)      { GadgetCheckBoxSetText( checkSoftShadows, UnicodeString( L"Soft shadows" ) ); GadgetCheckBoxSetChecked( checkSoftShadows, optionFlag( pref, "SoftShadows", TRUE ) ); checkSoftShadows->winEnable( native ); }
-		if (checkAmbientOcclusion) { GadgetCheckBoxSetText( checkAmbientOcclusion, UnicodeString( L"Ambient occlusion" ) ); GadgetCheckBoxSetChecked( checkAmbientOcclusion, optionFlag( pref, "AmbientOcclusion", TRUE ) ); checkAmbientOcclusion->winEnable( native ); }
+		if (checkAmbientOcclusion) { GadgetCheckBoxSetText( checkAmbientOcclusion, UnicodeString( L"Ambient occl." ) ); GadgetCheckBoxSetChecked( checkAmbientOcclusion, optionFlag( pref, "AmbientOcclusion", TRUE ) ); checkAmbientOcclusion->winEnable( native ); }
 		if (checkBloom)            { GadgetCheckBoxSetText( checkBloom, UnicodeString( L"Bloom (glow)" ) ); GadgetCheckBoxSetChecked( checkBloom, optionFlag( pref, "Bloom", TRUE ) ); checkBloom->winEnable( native ); }
 		if (checkFXAA)             { GadgetCheckBoxSetText( checkFXAA, UnicodeString( L"Anti-aliasing" ) ); GadgetCheckBoxSetChecked( checkFXAA, optionFlag( pref, "AntiAliasingFXAA", TRUE ) ); checkFXAA->winEnable( native ); }
-		if (checkUpdatedWater)     { GadgetCheckBoxSetText( checkUpdatedWater, UnicodeString( L"New water (restart)" ) ); GadgetCheckBoxSetChecked( checkUpdatedWater, optionFlag( pref, "UpdatedWater", TRUE ) ); }
+		if (checkUpdatedWater)     { GadgetCheckBoxSetText( checkUpdatedWater, UnicodeString( L"New water *" ) ); GadgetCheckBoxSetChecked( checkUpdatedWater, optionFlag( pref, "UpdatedWater", TRUE ) ); }
 		if (checkShockwaves)       { GadgetCheckBoxSetText( checkShockwaves, UnicodeString( L"Shockwaves" ) ); GadgetCheckBoxSetChecked( checkShockwaves, optionFlag( pref, "Shockwaves", TRUE ) ); }
+		for (NativeOption &o : g_nativeOptions)
+			if (o.win)
+			{
+				GadgetCheckBoxSetText( o.win, UnicodeString( o.label ) );
+				GadgetCheckBoxSetChecked( o.win, optionFlag( pref, o.key, o.def ) );
+				o.win->winEnable( native );
+			}
 		if (native)
 		{
 			// the engine's own stencil and decal shadows are not used by the native renderer
@@ -1126,6 +1157,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	}
 
 	WinAdvancedDisplay->winHide(TRUE);
+	if (getenv( "GENERALS_OPENADV" ))		// debugging: opens the advanced pane right away
+		showAdvancedOptions();
 
 	Color color =  GameMakeColor(255,255,255,255);
 

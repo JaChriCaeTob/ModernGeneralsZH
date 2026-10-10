@@ -30,3 +30,7 @@ code paths. Third-party mods (for example "uncut" content packs) are not include
 `-uncensored` flag only changes which of your own files the game prefers.
 
 *Command & Conquer*, *Generals* and *Zero Hour* are trademarks of Electronic Arts Inc.
+
+## release.zip
+
+`release.zip` contains the program built from this repository, the patched DXVK DLLs (zlib license, source: DXVK 3.1.1 plus `tools/dxvk/0001-*.patch`) and the FFmpeg DLLs built by vcpkg (LGPL; sources are available from the FFmpeg project and the vcpkg port). It contains no files of the original game.

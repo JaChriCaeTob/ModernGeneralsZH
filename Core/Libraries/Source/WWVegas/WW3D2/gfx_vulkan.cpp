@@ -147,8 +147,9 @@ struct DrawUbo
 	float pointScale[4];
 	float softA[4];
 	float softB[4];
+	float camPos[4];		// xyz: camera in world space, w: strength of the per pixel highlight (0 = per pixel lighting off)
 };
-static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 + 8 * 16 + 32 + 32, "DrawUbo must match the std140 block in the shaders");
+static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 + 8 * 16 + 32 + 32 + 16, "DrawUbo must match the std140 block in the shaders");
 
 uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
 
@@ -716,7 +717,7 @@ void OnTextureDestroyed(NullTexture* tex)
 
 VkSampler GetSampler(DWORD minF, DWORD magF, DWORD mipF, DWORD addrU, DWORD addrV, DWORD maxAniso)
 {
-	uint64_t key = (uint64_t)minF | ((uint64_t)magF << 4) | ((uint64_t)mipF << 8) | ((uint64_t)addrU << 12) | ((uint64_t)addrV << 16) | ((uint64_t)maxAniso << 20);
+	uint64_t key = (uint64_t)minF | ((uint64_t)magF << 4) | ((uint64_t)mipF << 8) | ((uint64_t)addrU << 12) | ((uint64_t)addrV << 16) | ((uint64_t)maxAniso << 20) | ((uint64_t)(g_cfg.anisotropy & 31) << 40);
 	auto it = B.samplers.find(key);
 	if (it != B.samplers.end())
 		return it->second;
@@ -734,6 +735,13 @@ VkSampler GetSampler(DWORD minF, DWORD magF, DWORD mipF, DWORD addrU, DWORD addr
 	{
 		ci.anisotropyEnable = VK_TRUE;
 		ci.maxAnisotropy = std::min<float>((float)maxAniso, B.props.limits.maxSamplerAnisotropy);
+	}
+	else if (B.anisotropy && g_cfg.anisotropy > 1 && minF >= 2 && magF >= 2 && mipF != 0)
+	{
+		// mip mapped, linearly filtered textures (terrain, units, buildings): keep them sharp at shallow viewing angles (also with the game's "bilinear" setting)
+		ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		ci.anisotropyEnable = VK_TRUE;
+		ci.maxAnisotropy = std::min<float>((float)g_cfg.anisotropy, B.props.limits.maxSamplerAnisotropy);
 	}
 	ci.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
 	VkSampler s = VK_NULL_HANDLE;
@@ -1133,12 +1141,77 @@ struct PostCfg
 	float softParticles = 14.0f;		// fade distance in world units, 0 = off
 } g_postCfg;
 
+// lights of the frame (explosions and other light pulses of the game) and the colour of the map's lighting, for the screen space light and haze passes
+float g_gameTime = -1.0f;		// seconds of game time (VkGfx_SetGameTime), negative = use the wall clock
+struct DynLight { float pos[3]; float color[3]; float range; };
+struct FxState
+{
+	std::vector<DynLight> lights;
+	float ambient[3] = { 0.45f, 0.5f, 0.6f }, diffuse[3] = { 1.0f, 0.95f, 0.85f };
+} g_fx;
+
 #include "gfx_vk_post.inl"
 
 uint32_t g_frame = 0;
 int g_frameDrawLog = 0;
 
 std::vector<std::string> g_drawTrace;		// description of every draw of the sampled frame			// drawn, offscreen, pixel shader, vertex shader, stencil, ring full, other
+
+// Screenshot of the finished frame (VkGfx_RequestScreenshot): the swapchain image is copied into a host buffer right before it is presented and written as a BMP.
+std::string g_shotPath;
+VkBuffer g_shotBuf = VK_NULL_HANDLE;
+Allocation g_shotAlloc;
+VkDeviceSize g_shotSize = 0;
+
+bool RecordShotCopy()
+{
+	const VkDeviceSize need = (VkDeviceSize)B.extent.width * B.extent.height * 4;
+	if (g_shotSize < need)
+	{
+		if (g_shotBuf) { vkDestroyBuffer(B.device, g_shotBuf, nullptr); Free(g_shotAlloc); g_shotBuf = VK_NULL_HANDLE; }
+		g_shotSize = 0;
+		if (!CreateBuffer(need, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, g_shotBuf, g_shotAlloc))
+			return false;
+		g_shotSize = need;
+	}
+	VkImage img = B.swapImages[B.imageIndex];
+	ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+	VkBufferImageCopy bic{};
+	bic.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	bic.imageExtent = { B.extent.width, B.extent.height, 1 };
+	vkCmdCopyImageToBuffer(B.cmd, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g_shotBuf, 1, &bic);
+	ImageBarrier(B.cmd, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+	return true;
+}
+
+void WriteShotFile()
+{
+	const uint32_t w = B.extent.width, h = B.extent.height;
+	const bool bgr = B.swapFormat == VK_FORMAT_B8G8R8A8_UNORM || B.swapFormat == VK_FORMAT_B8G8R8A8_SRGB;
+	FILE* f = fopen(g_shotPath.c_str(), "wb");
+	if (f)
+	{
+		uint8_t head[54] = { 'B', 'M' };
+		const uint32_t bytes = w * h * 4, off = 54, hdr = 40;
+		const uint32_t total = off + bytes; const int32_t nh = -(int32_t)h; const uint16_t planes = 1, bits = 32;
+		memcpy(head + 2, &total, 4); memcpy(head + 10, &off, 4); memcpy(head + 14, &hdr, 4); memcpy(head + 18, &w, 4); memcpy(head + 22, &nh, 4);
+		memcpy(head + 26, &planes, 2); memcpy(head + 28, &bits, 2);
+		fwrite(head, 1, 54, f);
+		std::vector<uint8_t> row(w * 4);
+		const uint8_t* src = (const uint8_t*)g_shotAlloc.mapped;
+		for (uint32_t y = 0; y < h; ++y)
+		{
+			memcpy(row.data(), src + (size_t)y * w * 4, w * 4);
+			for (uint32_t x = 0; x < w; ++x) { if (!bgr) std::swap(row[x * 4], row[x * 4 + 2]); row[x * 4 + 3] = 255; }
+			fwrite(row.data(), 1, row.size(), f);
+		}
+		fclose(f);
+		Log("screenshot written: %s", g_shotPath.c_str());
+	}
+	g_shotPath.clear();
+}
 
 void PresentFrame()
 {
@@ -1182,6 +1255,7 @@ void PresentFrame()
 		return;
 	}
 	EndPass();
+	const bool shot = !g_shotPath.empty() && RecordShotCopy();
 	ImageBarrier(B.cmd, B.swapImages[B.imageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, 0);
 	VKCHECK(vkEndCommandBuffer(B.cmd));
@@ -1207,6 +1281,7 @@ void PresentFrame()
 
 	vkWaitForFences(B.device, 1, &B.frameFence, VK_TRUE, UINT64_MAX);
 	vkResetFences(B.device, 1, &B.frameFence);
+	if (shot) WriteShotFile();
 	vkResetCommandBuffer(B.cmd, 0);
 	BeginCommandBuffer();
 	B.ringCursor = 0;
@@ -1766,6 +1841,11 @@ private:
 			}
 			u.lightInfo[0] = n;
 		}
+		{
+			const float* V = m_matrix[2];		// rigid view matrix: the camera is -t * R^T
+			for (int j = 0; j < 3; ++j) u.camPos[j] = -(V[12] * V[j * 4] + V[13] * V[j * 4 + 1] + V[14] * V[j * 4 + 2]);
+			u.camPos[3] = g_cfg.pixelLighting ? g_cfg.specularStrength : 0.0f;
+		}
 		memcpy((char*)B.ringAlloc.mapped + uOff, &u, sizeof(u));
 
 		PipeKey key;
@@ -1931,11 +2011,35 @@ void VkGfx_Configure(const VkGfx_Settings& s)
 	}
 	g_cloud.clouds = s.clouds; g_cloud.shadows = s.cloudShadows; g_cloud.base = s.cloudBase; g_cloud.thickness = std::max(s.cloudThickness, 10.0f);
 	g_cloud.coverage = s.cloudCoverage; g_cloud.density = s.cloudDensity; g_cloud.speed = s.cloudSpeed; g_cloud.shadowStrength = s.cloudShadowStrength;
+	if (const char* e = getenv("GENERALS_LIGHTS")) g_cfg.dynamicLights = e[0] != '0';
+	if (const char* e = getenv("GENERALS_LIGHTSTRENGTH")) g_cfg.dynamicLightStrength = (float)atof(e);
+	if (const char* e = getenv("GENERALS_PIXELLIGHT")) g_cfg.pixelLighting = e[0] != '0';
+	if (const char* e = getenv("GENERALS_ANISO")) g_cfg.anisotropy = atoi(e);
+}
+void VkGfx_SetSceneLighting(const float ambient[3], const float diffuse[3])
+{
+	for (int i = 0; i < 3; ++i) { g_fx.ambient[i] = ambient[i]; g_fx.diffuse[i] = diffuse[i]; }
+}
+void VkGfx_SetGameTime(float seconds) { g_gameTime = seconds; }
+void VkGfx_ClearDynamicLights() { g_fx.lights.clear(); }
+void VkGfx_RequestScreenshot(const char* path) { if (path) g_shotPath = path; }
+void VkGfx_AddDynamicLight(const float pos[3], const float color[3], float range)
+{
+	if (g_fx.lights.size() >= 64 || range <= 0.0f) return;
+	DynLight l;
+	for (int i = 0; i < 3; ++i) { l.pos[i] = pos[i]; l.color[i] = color[i]; }
+	l.range = range;
+	g_fx.lights.push_back(l);
 }
 void VkGfx_SetEffectToggles(bool soft, bool ao, bool bloom, bool fxaa)
 {
 	g_cfg.softShadows = soft; g_cfg.ambientOcclusion = ao; g_cfg.bloom = bloom; g_cfg.fxaa = fxaa;
 	g_sh.on = soft; g_postCfg.fxaa = fxaa; g_postCfg.bloomIntensity = bloom ? 0.16f : 0.0f; g_postCfg.aoStrength = ao ? 0.85f : 0.0f;
+}
+void VkGfx_SetMoreEffectToggles(bool lights, bool pixel, bool aniso, bool clouds, bool cloudShadows)
+{
+	g_cfg.dynamicLights = lights; g_cfg.pixelLighting = pixel; g_cfg.anisotropy = aniso ? 16 : 0;
+	g_cloud.clouds = clouds; g_cloud.shadows = cloudShadows;
 }
 bool VkGfx_CloudShadowsReplaceGameClouds() { return B.ready && B.postOn && g_cloud.shadows; }
 bool VkGfx_NativeActive() { return B.ready; }
@@ -2002,6 +2106,7 @@ void VkGfx_EndScene3D()
 
 void VkGfx_Configure(const VkGfx_Settings&) {}
 void VkGfx_SetEffectToggles(bool, bool, bool, bool) {}
+void VkGfx_SetMoreEffectToggles(bool, bool, bool, bool, bool) {}
 bool VkGfx_CloudShadowsReplaceGameClouds() { return false; }
 bool VkGfx_NativeActive() { return false; }
 bool VkGfx_Requested() { return false; }
@@ -2012,6 +2117,11 @@ void VkGfx_SuppressSceneDraws(bool) {}
 void VkGfx_SoftDraws(bool) {}
 bool VkGfx_SoftDrawsActive() { return false; }
 void VkGfx_EndScene3D() {}
+void VkGfx_SetSceneLighting(const float*, const float*) {}
+void VkGfx_SetGameTime(float) {}
+void VkGfx_ClearDynamicLights() {}
+void VkGfx_RequestScreenshot(const char*) {}
+void VkGfx_AddDynamicLight(const float*, const float*, float) {}
 
 #endif
 
