@@ -107,7 +107,7 @@ void main()
 	}
 	if (tExit <= tEnter) { outColor = vec4(0.0); return; }
 	float span = tExit - tEnter;
-	const int N = 28;
+	const int N = 20;
 	float dt = span / float(N);
 	float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
 	vec3 sun = normalize(u.sunDir.xyz);
@@ -125,8 +125,8 @@ void main()
 			float sigma = dens * 0.035;
 			// light reaching this sample through the cloud towards the sun
 			float lightD = 0.0;
-			for (int k = 1; k <= 4; ++k) lightD += cloudDensity(p + sun * (float(k) * 38.0), false);
-			float lightT = exp(-lightD * 38.0 * 0.035);
+			for (int k = 1; k <= 3; ++k) lightD += cloudDensity(p + sun * (float(k) * 50.0), false);
+			float lightT = exp(-lightD * 50.0 * 0.035);
 			float h = clamp((p.z - base) / u.cloudA.y, 0.0, 1.0);
 			vec3 amb = skyAmb * mix(0.55, 1.0, h);
 			vec3 s = sunCol * lightT * phase + amb;
@@ -138,6 +138,8 @@ void main()
 	}
 	// the clouds only appear when the camera comes up to them
 	float fade = smoothstep(0.0, u.cloudC.y, cam.z - base);
+	col = min(col, vec3(6.0));
+	if (any(isnan(col)) || isnan(T)) { outColor = vec4(0.0); return; }
 	outColor = vec4(col * fade, (1.0 - T) * fade);
 }
 
@@ -279,7 +281,7 @@ vec3 prefilter(vec3 c)
 #endif
 }
 
-vec3 tap(vec2 p) { return prefilter(min(texture(t0, p).rgb, vec3(16.0))); }
+vec3 tap(vec2 p) { vec3 c = texture(t0, p).rgb; if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0); return prefilter(min(c, vec3(16.0))); }
 
 void main()
 {
@@ -332,6 +334,7 @@ vec3 rolloff(vec3 x)
 void main()
 {
 	vec3 c = texture(t0, uv).rgb;
+	if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0);
 	if (u.p2.y > 0.5)
 	{
 		if (u.p1.z > 0.0)

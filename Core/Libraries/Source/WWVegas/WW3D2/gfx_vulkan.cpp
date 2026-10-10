@@ -1122,7 +1122,7 @@ uint32_t g_cnt[16] = {};
 struct CloudCfg
 {
 	bool clouds = true, shadows = true;
-	float base = 550.0f, thickness = 150.0f, coverage = 0.20f, density = 0.85f, speed = 1.0f, shadowStrength = 0.85f;
+	float base = 350.0f, thickness = 120.0f, coverage = 0.20f, density = 0.85f, speed = 1.0f, shadowStrength = 0.85f;
 } g_cloud;
 
 struct PostCfg

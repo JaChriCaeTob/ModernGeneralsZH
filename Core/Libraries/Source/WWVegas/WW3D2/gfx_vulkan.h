@@ -14,8 +14,8 @@ struct VkGfx_Settings
 	// volumetric clouds (Options.ini keys Clouds, CloudShadows, CloudBase, CloudThickness, CloudCoverage, CloudDensity, CloudSpeed, CloudShadowStrength)
 	bool clouds = true;				// visible clouds when the camera is above the cloud layer
 	bool cloudShadows = true;		// moving cloud shadows on the ground (replace the game's cloud texture)
-	float cloudBase = 550.0f;		// height of the underside of the cloud layer (world units, the ground is mostly between 0 and 100)
-	float cloudThickness = 150.0f;
+	float cloudBase = 350.0f;		// height of the underside of the cloud layer (world units, the ground is mostly between 0 and 100)
+	float cloudThickness = 120.0f;
 	float cloudCoverage = 0.20f;		// 0 clear sky .. 1 overcast
 	float cloudDensity = 0.85f;		// opacity of the clouds
 	float cloudSpeed = 1.0f;			// drift speed
