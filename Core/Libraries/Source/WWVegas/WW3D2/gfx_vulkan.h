@@ -16,10 +16,10 @@ struct VkGfx_Settings
 	bool cloudShadows = true;		// moving cloud shadows on the ground (replace the game's cloud texture)
 	float cloudBase = 550.0f;		// height of the underside of the cloud layer (world units, the ground is mostly between 0 and 100)
 	float cloudThickness = 150.0f;
-	float cloudCoverage = 0.36f;		// 0 clear sky .. 1 overcast
+	float cloudCoverage = 0.20f;		// 0 clear sky .. 1 overcast
 	float cloudDensity = 0.85f;		// opacity of the clouds
 	float cloudSpeed = 1.0f;			// drift speed
-	float cloudShadowStrength = 0.60f;
+	float cloudShadowStrength = 0.85f;
 };
 void VkGfx_SetEffectToggles(bool softShadows, bool ambientOcclusion, bool bloom, bool fxaa);		// the options menu check boxes, applied live
 bool VkGfx_CloudShadowsReplaceGameClouds();		// the game's own cloud texture on the terrain is switched off

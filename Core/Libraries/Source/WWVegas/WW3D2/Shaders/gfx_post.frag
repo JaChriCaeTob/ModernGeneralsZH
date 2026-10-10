@@ -75,8 +75,9 @@ float cloudDensity(vec3 p, bool detail)
 	float n = noise3(q) * 0.55 + noise3(q * 2.07 + 11.0) * 0.28;
 	if (detail) n += noise3(q * 4.3 + 23.0) * 0.12 + noise3(q * 8.9 + 5.0) * 0.05;
 	else n += 0.085;
-	float thr = 0.9 - u.cloudA.z * 0.8;			// coverage 0.5 puts the threshold at the median of the noise
-	return clamp((n - thr) * 4.0, 0.0, 1.0) * profile * u.cloudA.w;
+	float z = (n - 0.5) / 0.12;						// roughly normally distributed
+	float z0 = (0.5 - u.cloudA.z) * 3.0;			// coverage 0.5 puts the threshold at the median
+	return smoothstep(z0, z0 + 0.9, z) * profile * u.cloudA.w;
 }
 
 #endif
@@ -164,7 +165,7 @@ void main()
 		float dtc = (t1c - t0c) / 6.0;
 		float acc = 0.0;
 		for (int i = 0; i < 6; ++i) acc += cloudDensity(Pw + u.sunDir.xyz * (t0c + (float(i) + 0.5) * dtc), false);
-		cs = mix(1.0, exp(-acc * dtc * 0.008), u.cloudB.z);
+		cs = mix(1.0, exp(-acc * dtc * 0.022), u.cloudB.z);
 	}
 	float strength = u.p0.w;
 

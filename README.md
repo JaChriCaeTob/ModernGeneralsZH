@@ -212,10 +212,10 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 | `CloudShadows` | `yes` | Moving cloud shadows on the ground; they replace the game's own cloud texture. |
 | `CloudBase` | `550` | Height of the underside of the clouds in world units (the ground is mostly between 0 and 100). Lower it so clouds show at a smaller zoom; keep it below `MaxCameraHeight`. |
 | `CloudThickness` | `150` | Thickness of the cloud layer. |
-| `CloudCoverage` | `0.36` | 0 clear sky to 1 overcast. |
+| `CloudCoverage` | `0.2` | 0 clear sky to 1 overcast. |
 | `CloudDensity` | `0.85` | Opacity of the clouds. |
 | `CloudSpeed` | `1` | Drift speed. |
-| `CloudShadowStrength` | `0.6` | How dark the cloud shadows are, 0 to 1. |
+| `CloudShadowStrength` | `0.85` | How dark the cloud shadows are, 0 to 1. |
 | `Resolution` | game default | Use a resolution your display really supports at fullscreen. |
 
 ### Environment variables (override Options.ini; mostly for development)

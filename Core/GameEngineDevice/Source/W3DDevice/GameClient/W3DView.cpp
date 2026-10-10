@@ -3737,6 +3737,27 @@ bool W3DView::getDesiredTerrainDrawSize(ICoord2D &dimensions) const
 		return false;
 	}
 
+	// A camera zoomed out beyond the game's own limit sees more than the regular terrain window: draw the whole map then
+	// (with some hysteresis so the window does not flip back and forth around the threshold).
+	static Bool s_wideView = FALSE;
+	if (m_isUserControlled)
+	{
+		const Real original = 310.0f;
+		if (m_currentHeightAboveGround > original * 1.25f) s_wideView = TRUE;
+		else if (m_currentHeightAboveGround < original * 1.1f) s_wideView = FALSE;
+	}
+	else
+		s_wideView = FALSE;
+	if (s_wideView)
+	{
+		if (const WorldHeightMap *heightMap = TheTerrainRenderObject->getMap())
+		{
+			dimensions.x = heightMap->getXExtent();
+			dimensions.y = heightMap->getYExtent();
+			return true;
+		}
+	}
+
 	const Real cameraPitch = asin(fabs(m_3DCamera->Get_Forward_Dir().Z));
 
 	if (cameraPitch > ViewDefaultLowPitchRadians || !m_isUserControlled)
