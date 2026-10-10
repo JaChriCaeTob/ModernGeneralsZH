@@ -143,8 +143,8 @@ void main()
 	{
 		// particles fade out where they meet the geometry behind them
 		float sceneDepth = texture(depthCopy, gl_FragCoord.xy / draw.softB.xy).r;
-		float sceneZ = draw.softA.y / (sceneDepth - draw.softA.x);
-		float fragZ = draw.softA.y / (gl_FragCoord.z - draw.softA.x);
+		float sceneZ = draw.softA.y / (sceneDepth + draw.softA.x);		// the game's projection is right handed: depth = -[2][2] + [3][2] / distance
+		float fragZ = draw.softA.y / (gl_FragCoord.z + draw.softA.x);
 		float f = clamp((sceneZ - fragZ) / draw.softA.z, 0.0, 1.0);
 		f = f * f * (3.0 - 2.0 * f);
 		if (sceneDepth >= 0.99999) f = 1.0;
