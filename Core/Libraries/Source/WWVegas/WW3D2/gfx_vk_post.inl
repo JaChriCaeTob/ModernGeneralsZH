@@ -4,8 +4,9 @@
 // the scene goes through bloom, a soft highlight roll-off, colour grading and FXAA and lands in the swapchain image; the interface
 // is then drawn straight onto the swapchain ("stage 1") so text and icons are never filtered.
 
-enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_SHADOW, PASS_COUNT };
+enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_SHADOW, PASS_CLOUDS, PASS_COUNT };
 
+static void RigidInverse(const float* m, float* out);
 struct PostUbo;
 GpuTexture* ShadowStage(const PostUbo& base);
 bool ShadowsEnabled();
@@ -22,6 +23,7 @@ struct PostUbo
 	float sunDir[4];
 	float shadowParams[4];
 	float viewRect[4];		// x, y, width, height in pixels of the viewport the 3D scene was drawn with
+	float cloudA[4], cloudB[4], cloudC[4];
 };
 
 void Multiply(const float* a, const float* b, float* out)	// row-major 4x4: out = a * b
@@ -140,9 +142,9 @@ void DestroyPostTargets()
 
 // ---- pipelines ------------------------------------------------------------------------------------------------------------
 
-VkPipeline GetPostPipe(int pass, VkFormat fmt, bool additive)
+VkPipeline GetPostPipe(int pass, VkFormat fmt, int blendMode)
 {
-	const uint64_t key = (uint64_t)pass | ((uint64_t)fmt << 8) | ((uint64_t)additive << 40);
+	const uint64_t key = (uint64_t)pass | ((uint64_t)fmt << 8) | ((uint64_t)blendMode << 40);
 	auto it = B.postPipes.find(key);
 	if (it != B.postPipes.end())
 		return it->second;
@@ -158,10 +160,15 @@ VkPipeline GetPostPipe(int pass, VkFormat fmt, bool additive)
 	VkPipelineDepthStencilStateCreateInfo ds{ VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
 	VkPipelineColorBlendAttachmentState cba{};
 	cba.colorWriteMask = 0xF;
-	if (additive)
+	if (blendMode == 1)
 	{
 		cba.blendEnable = VK_TRUE; cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.colorBlendOp = VK_BLEND_OP_ADD;
 		cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE; cba.alphaBlendOp = VK_BLEND_OP_ADD;
+	}
+	else if (blendMode == 2)		// premultiplied colour over the scene
+	{
+		cba.blendEnable = VK_TRUE; cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; cba.colorBlendOp = VK_BLEND_OP_ADD;
+		cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; cba.alphaBlendOp = VK_BLEND_OP_ADD;
 	}
 	VkPipelineColorBlendStateCreateInfo cb{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
 	cb.attachmentCount = 1; cb.pAttachments = &cba;
@@ -191,7 +198,7 @@ bool CreatePostShaders()
 	struct { const unsigned int* code; size_t size; } fs[PASS_COUNT] = {
 		{ g_gfxPostBloomDown0Frag, sizeof(g_gfxPostBloomDown0Frag) }, { g_gfxPostBloomDownFrag, sizeof(g_gfxPostBloomDownFrag) },
 		{ g_gfxPostBloomUpFrag, sizeof(g_gfxPostBloomUpFrag) }, { g_gfxPostCompositeFrag, sizeof(g_gfxPostCompositeFrag) },
-		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) }, { g_gfxPostAoFrag, sizeof(g_gfxPostAoFrag) }, { g_gfxPostAoBlurFrag, sizeof(g_gfxPostAoBlurFrag) }, { g_gfxPostShadowFrag, sizeof(g_gfxPostShadowFrag) } };
+		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) }, { g_gfxPostAoFrag, sizeof(g_gfxPostAoFrag) }, { g_gfxPostAoBlurFrag, sizeof(g_gfxPostAoBlurFrag) }, { g_gfxPostShadowFrag, sizeof(g_gfxPostShadowFrag) }, { g_gfxPostCloudsFrag, sizeof(g_gfxPostCloudsFrag) } };
 	for (int i = 0; i < PASS_COUNT; ++i)
 	{
 		smi.codeSize = fs[i].size; smi.pCode = fs[i].code;
@@ -222,7 +229,7 @@ void ToSampled(GpuTexture* t)
 
 // One full screen pass. Inputs must be in the sampled layout. The target is left as a colour attachment (render targets go on to the
 // sampled layout through ToSampled; the swapchain stays an attachment).
-void PostDraw(int pass, bool additive, GpuTexture* const in[4], PostUbo& ub, VkImage tImg, VkImageView tView, VkFormat tFmt, VkExtent2D ext,
+void PostDraw(int pass, int blendMode, GpuTexture* const in[4], PostUbo& ub, VkImage tImg, VkImageView tView, VkFormat tFmt, VkExtent2D ext,
 	VkImageLayout tOld, bool loadTarget)
 {
 	ImageBarrier(B.cmd, tImg, tOld, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
@@ -234,7 +241,7 @@ void PostDraw(int pass, bool additive, GpuTexture* const in[4], PostUbo& ub, VkI
 	VkRenderingInfo ri{ VK_STRUCTURE_TYPE_RENDERING_INFO };
 	ri.renderArea = { { 0, 0 }, ext }; ri.layerCount = 1; ri.colorAttachmentCount = 1; ri.pColorAttachments = &color;
 	vkCmdBeginRendering(B.cmd, &ri);
-	vkCmdBindPipeline(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GetPostPipe(pass, tFmt, additive));
+	vkCmdBindPipeline(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GetPostPipe(pass, tFmt, blendMode));
 	VkViewport vp{ 0, 0, (float)ext.width, (float)ext.height, 0.0f, 1.0f };
 	VkRect2D sc{ { 0, 0 }, ext };
 	vkCmdSetViewport(B.cmd, 0, 1, &vp);
@@ -279,6 +286,18 @@ bool AcquireSwap()
 	return false;
 }
 
+// Fills the camera, sun and cloud parameters of a post pass that needs them.
+void FillCloudUbo(PostUbo& a, const float* invView)
+{
+	a.proj[0] = B.lastProj[0]; a.proj[1] = B.lastProj[5]; a.proj[2] = B.lastProj[10]; a.proj[3] = B.lastProj[14];
+	a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f; memcpy(a.viewRect, B.lastViewport, 16);
+	memcpy(a.invView, invView, 64);
+	a.sunDir[0] = g_sh.sun[0]; a.sunDir[1] = g_sh.sun[1]; a.sunDir[2] = g_sh.sun[2];
+	a.cloudA[0] = g_cloud.base; a.cloudA[1] = g_cloud.thickness; a.cloudA[2] = g_cloud.coverage; a.cloudA[3] = g_cloud.density;
+	a.cloudB[0] = (float)(GetTickCount() % 3600000) * 0.001f; a.cloudB[1] = g_cloud.speed; a.cloudB[2] = g_cloud.shadowStrength; a.cloudB[3] = g_cloud.shadows ? 1.0f : 0.0f;
+	a.cloudC[0] = g_cloud.clouds ? 1.0f : 0.0f; a.cloudC[1] = 160.0f;
+}
+
 // Runs the post processing chain and leaves the swapchain image holding the finished scene, in stage 1 (interface).
 bool RunPostProcess()
 {
@@ -303,7 +322,8 @@ bool RunPostProcess()
 	GpuTexture* none[4] = { nullptr, nullptr, nullptr, nullptr };
 	bool haveAo = false;
 	GpuTexture* shadowVis = nullptr;
-	if (has3D && B.haveProj && B.depthTex && (g_postCfg.aoStrength > 0.0f || ShadowsEnabled()))
+	const bool cloudsOn = g_cloud.shadows || g_cloud.clouds;
+	if (has3D && B.haveProj && B.depthTex && (g_postCfg.aoStrength > 0.0f || ShadowsEnabled() || (cloudsOn && g_sh.haveSun && B.postOn)))
 	{
 		// the scene's depth buffer becomes readable
 		ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
@@ -360,6 +380,21 @@ bool RunPostProcess()
 		}
 	}
 
+	// volumetric clouds, drawn into the HDR scene when the camera is above the cloud layer
+	if (has3D && B.haveProj && B.depthTex && g_cloud.clouds && g_sh.haveSun)
+	{
+		float iv[16];
+		RigidInverse(B.lastView, iv);
+		if (iv[14] > g_cloud.base)
+		{
+			PostUbo c = ub;
+			FillCloudUbo(c, iv);
+			GpuTexture* inK[4] = { B.depthTex, nullptr, nullptr, nullptr };
+			PostDraw(PASS_CLOUDS, 2, inK, c, B.hdr->image, B.hdr->view, B.hdr->format, B.extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true);
+			B.hdr->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.hdr);
+		}
+	}
+
 	// composite into the LDR image, then FXAA into the swapchain (or straight into the swapchain when there is no 3D scene)
 	GpuTexture* inC[4] = { B.hdr, B.bloom[0], haveAo ? B.ao[0] : nullptr, shadowVis };
 	if (has3D)
@@ -367,7 +402,7 @@ bool RunPostProcess()
 		PostUbo c = ub;
 		if (g_postCfg.bloomIntensity <= 0.0f) c.p0[2] = 0.0f;
 		c.p1[2] = haveAo ? g_postCfg.aoStrength : 0.0f;
-		c.sunDir[3] = shadowVis ? g_sh.strength : 0.0f;
+		c.sunDir[3] = shadowVis ? 1.0f : 0.0f;
 		PostDraw(PASS_COMPOSITE, false, inC, c, B.ldr->image, B.ldr->view, B.ldr->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
 		B.ldr->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ldr);
 		GpuTexture* inF[4] = { B.ldr, nullptr, nullptr, nullptr };

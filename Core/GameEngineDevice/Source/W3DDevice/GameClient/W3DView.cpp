@@ -2245,12 +2245,16 @@ void W3DView::setPitchToDefault()
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
+extern Real g_originalMaxCameraHeight;
+
 void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight)
 {
 	// MDC - we no longer want to rotate maps (design made all of them right to begin with)
 	//	m_defaultAngle = angle * M_PI/180.0f;
 	setDefaultPitch(pitch);
-	m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight*maxHeight;
+	// the main menu scene is composed for the game's own zoom limit: with the raised one the camera shows the edge of the map
+	const Bool menuScene = TheGameLogic && (TheGameLogic->isInShellGame() || !TheGameLogic->isInGame());
+	m_maxHeightAboveGround = (menuScene && g_originalMaxCameraHeight > 0.0f ? g_originalMaxCameraHeight : TheGlobalData->m_maxCameraHeight)*maxHeight;
 	if (m_minHeightAboveGround > m_maxHeightAboveGround)
 		m_maxHeightAboveGround = m_minHeightAboveGround;
 }

@@ -835,6 +835,14 @@ void W3DDisplay::init()
 			gs.softShadows = flag("SoftShadows", true);
 			gs.sunAzimuth = number("SunAzimuth", -1.0f);
 			gs.sunElevation = number("SunElevation", -1.0f);
+			gs.clouds = flag("Clouds", true);
+			gs.cloudShadows = flag("CloudShadows", true);
+			gs.cloudBase = number("CloudBase", gs.cloudBase);
+			gs.cloudThickness = number("CloudThickness", gs.cloudThickness);
+			gs.cloudCoverage = number("CloudCoverage", gs.cloudCoverage);
+			gs.cloudDensity = number("CloudDensity", gs.cloudDensity);
+			gs.cloudSpeed = number("CloudSpeed", gs.cloudSpeed);
+			gs.cloudShadowStrength = number("CloudShadowStrength", gs.cloudShadowStrength);
 			VkGfx_Configure(gs);
 		}
 		if (WW3D::Init( ApplicationHWnd ) != WW3D_ERROR_OK)

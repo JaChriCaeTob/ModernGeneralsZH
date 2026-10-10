@@ -213,9 +213,7 @@ static Bool optionFlag(OptionPreferences *p, const char *key, Bool def)
 
 static void applyNativeGraphics(Bool soft, Bool ao, Bool bloom, Bool fxaa)
 {
-	VkGfx_Settings gs;
-	gs.softShadows = soft; gs.ambientOcclusion = ao; gs.bloom = bloom; gs.fxaa = fxaa;
-	VkGfx_Configure(gs);
+	VkGfx_SetEffectToggles(soft, ao, bloom, fxaa);
 }
 
 /*

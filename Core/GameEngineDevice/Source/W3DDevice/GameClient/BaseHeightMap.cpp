@@ -89,6 +89,7 @@
 #include "W3DDevice/GameClient/W3DCustomScene.h"
 
 #include "Common/UnitTimings.h" //Contains the DO_UNIT_TIMINGS define jba.
+#include "WW3D2/gfx_vulkan.h"
 #include "W3DDevice/GameClient/BaseHeightMap.h"
 
 #include "W3DDevice/GameClient/HeightMap.h"
@@ -2854,5 +2855,6 @@ void BaseHeightMapRenderObjClass::loadPostProcess()
 //=============================================================================
 Bool BaseHeightMapRenderObjClass::useCloud()
 {
-	return TheGlobalData->m_useCloudMap && TheGlobalData->m_timeOfDay != TIME_OF_DAY_NIGHT;
+	// the native Vulkan renderer draws its own moving cloud shadows (volumetric clouds) instead of the game's cloud texture
+	return TheGlobalData->m_useCloudMap && TheGlobalData->m_timeOfDay != TIME_OF_DAY_NIGHT && !VkGfx_CloudShadowsReplaceGameClouds();
 }

@@ -18,6 +18,9 @@ layout(std140, set = 0, binding = 0) uniform Post
 	vec4 sunDir;        // world space direction towards the sun
 	vec4 shadowParams;  // shadow map size, light size, bias, unused
 	vec4 viewRect;      // viewport of the 3D scene in pixels
+	vec4 cloudA;        // cloud base height, thickness, coverage, density
+	vec4 cloudB;        // time in seconds, speed, shadow strength, shadows on
+	vec4 cloudC;        // visible clouds on, fade range above the base, camera height
 } u;
 
 layout(set = 0, binding = 1) uniform sampler2D t0;
@@ -30,7 +33,7 @@ layout(location = 0) out vec4 outColor;
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-#if defined(PASS_AO) || defined(PASS_AOBLUR) || defined(PASS_SHADOW)
+#if defined(PASS_AO) || defined(PASS_AOBLUR) || defined(PASS_SHADOW) || defined(PASS_CLOUDS)
 
 // view space depth of a depth buffer value; the sign of the projection's [2][3] element is in p2.w
 float viewZ(float d) { return u.proj.w / (u.p2.w * d - u.proj.z); }
@@ -45,7 +48,99 @@ vec3 viewPos(vec2 p)
 
 #endif
 
-#if defined(PASS_SHADOW)
+#if defined(PASS_SHADOW) || defined(PASS_CLOUDS)
+
+// ---- procedural clouds: value noise, four octaves, a height profile inside the layer, drifting with the wind
+float hash3(vec3 p)
+{
+	p = fract(p * 0.3183099 + 0.1);
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise3(vec3 x)
+{
+	vec3 i = floor(x), f = fract(x);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(hash3(i + vec3(0, 0, 0)), hash3(i + vec3(1, 0, 0)), f.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), f.x), f.y),
+	           mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+float cloudDensity(vec3 p, bool detail)
+{
+	float h = (p.z - u.cloudA.x) / u.cloudA.y;
+	if (h < 0.0 || h > 1.0) return 0.0;
+	float profile = smoothstep(0.0, 0.18, h) * smoothstep(1.0, 0.55, h);
+	vec3 q = p / 420.0 + vec3(0.37, 0.21, 0.0) * u.cloudB.x * u.cloudB.y * 0.05;
+	float n = noise3(q) * 0.55 + noise3(q * 2.07 + 11.0) * 0.28;
+	if (detail) n += noise3(q * 4.3 + 23.0) * 0.12 + noise3(q * 8.9 + 5.0) * 0.05;
+	else n += 0.085;
+	float thr = 0.9 - u.cloudA.z * 0.8;			// coverage 0.5 puts the threshold at the median of the noise
+	return clamp((n - thr) * 4.0, 0.0, 1.0) * profile * u.cloudA.w;
+}
+
+#endif
+
+#if defined(PASS_CLOUDS)
+
+float hg(float c, float g) { float g2 = g * g; return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * c, 1.5)); }
+
+void main()
+{
+	vec2 pix = uv * u.texel.zw;
+	vec2 ndc = vec2((pix.x - u.viewRect.x) / u.viewRect.z * 2.0 - 1.0, 1.0 - (pix.y - u.viewRect.y) / u.viewRect.w * 2.0);
+	if (abs(ndc.x) > 1.0 || abs(ndc.y) > 1.0 || u.cloudC.x < 0.5) { outColor = vec4(0.0); return; }
+	vec3 dv = vec3(ndc.x / u.proj.x, ndc.y / u.proj.y, -u.p2.w);
+	vec3 dirW = normalize((u.invView * vec4(dv, 0.0)).xyz);
+	vec3 cam = (u.invView * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	float base = u.cloudA.x, top = u.cloudA.x + u.cloudA.y;
+	if (cam.z < base || dirW.z > -0.02) { outColor = vec4(0.0); return; }
+
+	float tEnter = max((top - cam.z) / dirW.z, 0.0);
+	float tExit = (base - cam.z) / dirW.z;
+	float d = texture(t0, uv).r;
+	if (d < 0.99999)
+	{
+		float zv = abs(viewZ(d));
+		tExit = min(tExit, zv * length(dv));
+	}
+	if (tExit <= tEnter) { outColor = vec4(0.0); return; }
+	float span = tExit - tEnter;
+	const int N = 28;
+	float dt = span / float(N);
+	float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+	vec3 sun = normalize(u.sunDir.xyz);
+	float phase = hg(dot(dirW, sun), 0.55) * 0.6 + 0.4 * hg(dot(dirW, sun), -0.2) + 0.05;
+	vec3 sunCol = vec3(1.0, 0.94, 0.82) * 2.6;
+	vec3 skyAmb = vec3(0.50, 0.62, 0.82) * 0.55;
+	float T = 1.0;
+	vec3 col = vec3(0.0);
+	for (int i = 0; i < N; ++i)
+	{
+		vec3 p = cam + dirW * (tEnter + (float(i) + jitter) * dt);
+		float dens = cloudDensity(p, true);
+		if (dens > 0.004)
+		{
+			float sigma = dens * 0.035;
+			// light reaching this sample through the cloud towards the sun
+			float lightD = 0.0;
+			for (int k = 1; k <= 4; ++k) lightD += cloudDensity(p + sun * (float(k) * 38.0), false);
+			float lightT = exp(-lightD * 38.0 * 0.035);
+			float h = clamp((p.z - base) / u.cloudA.y, 0.0, 1.0);
+			vec3 amb = skyAmb * mix(0.55, 1.0, h);
+			vec3 s = sunCol * lightT * phase + amb;
+			float a = 1.0 - exp(-sigma * dt);
+			col += T * s * a;
+			T *= 1.0 - a;
+			if (T < 0.02) break;
+		}
+	}
+	// the clouds only appear when the camera comes up to them
+	float fade = smoothstep(0.0, u.cloudC.y, cam.z - base);
+	outColor = vec4(col * fade, (1.0 - T) * fade);
+}
+
+#elif defined(PASS_SHADOW)
 
 const vec2 kDisk[24] = vec2[](
 	vec2(0.1, 0.2), vec2(-0.45, 0.12), vec2(0.38, -0.31), vec2(-0.12, -0.52), vec2(0.62, 0.21), vec2(-0.68, -0.18),
@@ -59,9 +154,24 @@ void main()
 	if (d >= 0.99999) { outColor = vec4(1.0); return; }
 	vec3 P = viewPos(uv);
 	vec3 Pw = (u.invView * vec4(P, 1.0)).xyz;
+
+	// cloud shadow: march from the surface towards the sun through the cloud layer
+	float cs = 1.0;
+	if (u.cloudB.w > 0.5 && u.sunDir.z > 0.1 && Pw.z < u.cloudA.x + u.cloudA.y)
+	{
+		float t0c = max((u.cloudA.x - Pw.z) / u.sunDir.z, 0.0);
+		float t1c = (u.cloudA.x + u.cloudA.y - Pw.z) / u.sunDir.z;
+		float dtc = (t1c - t0c) / 6.0;
+		float acc = 0.0;
+		for (int i = 0; i < 6; ++i) acc += cloudDensity(Pw + u.sunDir.xyz * (t0c + (float(i) + 0.5) * dtc), false);
+		cs = mix(1.0, exp(-acc * dtc * 0.008), u.cloudB.z);
+	}
+	float strength = u.p0.w;
+
+	if (u.shadowParams.x < 1.0) { outColor = vec4(cs, 0.0, 0.0, 1.0); return; }
 	vec4 lc = u.lightVP * vec4(Pw, 1.0);
 	vec2 suv = vec2(lc.x * 0.5 + 0.5, 0.5 - lc.y * 0.5);
-	if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || lc.z > 1.0) { outColor = vec4(1.0); return; }
+	if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || lc.z > 1.0) { outColor = vec4(cs, 0.0, 0.0, 1.0); return; }
 
 	float size = u.shadowParams.x;
 	float range = u.shadowParams.z;
@@ -82,7 +192,7 @@ void main()
 		float sd = texture(t1, suv + o).r;
 		if (sd < zr) { sum += sd; cnt += 1.0; }
 	}
-	if (cnt < 0.5) { outColor = vec4(1.0); return; }
+	if (cnt < 0.5) { outColor = vec4(cs, 0.0, 0.0, 1.0); return; }
 	float zb = sum / cnt;
 	// penumbra: grows with the distance between caster and receiver
 	float penWorld = (zr - zb) * range * lightSize;
@@ -93,7 +203,7 @@ void main()
 		vec2 o = rot * kDisk[i] * rUV;
 		lit += (texture(t1, suv + o).r < zr) ? 0.0 : 1.0;
 	}
-	outColor = vec4(lit / 24.0, 0.0, 0.0, 1.0);
+	outColor = vec4(mix(1.0, lit / 24.0, strength * cs * cs) * cs, 0.0, 0.0, 1.0);		// object shadows fade out where a cloud already blocks the sun
 }
 
 #elif defined(PASS_AO)
@@ -226,7 +336,7 @@ void main()
 		if (u.p1.z > 0.0)
 			c *= texture(t2, uv).r;
 		if (u.sunDir.w > 0.0)
-			c *= mix(1.0, 0.0 + texture(t3, uv).r, u.sunDir.w) * 1.0 + 0.0;
+			c *= texture(t3, uv).r;
 		vec3 bloom = texture(t1, uv).rgb;
 		c += bloom * u.p0.z;
 		c = rolloff(c);

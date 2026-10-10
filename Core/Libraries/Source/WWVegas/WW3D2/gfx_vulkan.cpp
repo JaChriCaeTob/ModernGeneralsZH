@@ -195,7 +195,7 @@ struct Backend
 	GpuTexture* ao[2] = {}; GpuTexture* depthTex = nullptr; VkImageView depthSampleView = VK_NULL_HANDLE;
 	float lastViewport[4] = {};
 	float lastProj[16] = {}, lastView[16] = {}; bool haveProj = false;
-	VkShaderModule postVs = VK_NULL_HANDLE, postFs[8] = {};
+	VkShaderModule postVs = VK_NULL_HANDLE, postFs[16] = {};
 	std::map<uint64_t, VkPipeline> postPipes;
 	bool postOn = true;								// false: draw straight to the swapchain
 	int stage = 1;									// 0: 3D scene into the HDR image (between VkGfx_BeginScene3D and EndScene3D), 1: straight onto the swapchain
@@ -1119,6 +1119,12 @@ bool EnsureRendering()
 }
 
 uint32_t g_cnt[16] = {};
+struct CloudCfg
+{
+	bool clouds = true, shadows = true;
+	float base = 550.0f, thickness = 150.0f, coverage = 0.36f, density = 0.85f, speed = 1.0f, shadowStrength = 0.60f;
+} g_cloud;
+
 struct PostCfg
 {
 	float bloomThreshold = 0.92f, bloomKnee = 0.25f, bloomIntensity = 0.16f, saturation = 1.04f, contrast = 1.03f;
@@ -1347,6 +1353,7 @@ public:
 		g_sh.on = g_cfg.softShadows; B.postOn = g_cfg.postProcessing; g_postCfg.fxaa = g_cfg.fxaa;
 		if (!g_cfg.bloom) g_postCfg.bloomIntensity = 0.0f;
 		if (!g_cfg.ambientOcclusion) g_postCfg.aoStrength = 0.0f;
+		{ const char* e = getenv("GENERALS_CLOUDS"); if (e && e[0] == '0') { g_cloud.clouds = false; g_cloud.shadows = false; } }
 		{ const char* e = getenv("GENERALS_SOFT"); if (e) g_postCfg.softParticles = (float)atof(e); }
 		{ const char* e = getenv("GENERALS_SHADOWS"); if (e && e[0] == '0') g_sh.on = false; }
 		{ const char* e = getenv("GENERALS_POST"); if (e) B.postOn = e[0] != '0'; }
@@ -1922,7 +1929,15 @@ void VkGfx_Configure(const VkGfx_Settings& s)
 		g_postCfg.bloomIntensity = s.bloom ? 0.16f : 0.0f;
 		g_postCfg.aoStrength = s.ambientOcclusion ? 0.85f : 0.0f;
 	}
+	g_cloud.clouds = s.clouds; g_cloud.shadows = s.cloudShadows; g_cloud.base = s.cloudBase; g_cloud.thickness = std::max(s.cloudThickness, 10.0f);
+	g_cloud.coverage = s.cloudCoverage; g_cloud.density = s.cloudDensity; g_cloud.speed = s.cloudSpeed; g_cloud.shadowStrength = s.cloudShadowStrength;
 }
+void VkGfx_SetEffectToggles(bool soft, bool ao, bool bloom, bool fxaa)
+{
+	g_cfg.softShadows = soft; g_cfg.ambientOcclusion = ao; g_cfg.bloom = bloom; g_cfg.fxaa = fxaa;
+	g_sh.on = soft; g_postCfg.fxaa = fxaa; g_postCfg.bloomIntensity = bloom ? 0.16f : 0.0f; g_postCfg.aoStrength = ao ? 0.85f : 0.0f;
+}
+bool VkGfx_CloudShadowsReplaceGameClouds() { return B.ready && B.postOn && g_cloud.shadows; }
 bool VkGfx_NativeActive() { return B.ready; }
 
 bool VkGfx_Requested()
@@ -1986,6 +2001,8 @@ void VkGfx_EndScene3D()
 #else	// no Vulkan headers in this configuration
 
 void VkGfx_Configure(const VkGfx_Settings&) {}
+void VkGfx_SetEffectToggles(bool, bool, bool, bool) {}
+bool VkGfx_CloudShadowsReplaceGameClouds() { return false; }
 bool VkGfx_NativeActive() { return false; }
 bool VkGfx_Requested() { return false; }
 IDirect3D8* WINAPI VkGfx_Direct3DCreate8(UINT) { return nullptr; }

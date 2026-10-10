@@ -11,7 +11,18 @@ struct VkGfx_Settings
 	bool postProcessing = true;		// bloom, colour grading, ambient occlusion
 	bool bloom = true, ambientOcclusion = true, fxaa = true, softShadows = true;
 	float sunAzimuth = -1.0f, sunElevation = -1.0f;		// degrees; negative = random for every launch
+	// volumetric clouds (Options.ini keys Clouds, CloudShadows, CloudBase, CloudThickness, CloudCoverage, CloudDensity, CloudSpeed, CloudShadowStrength)
+	bool clouds = true;				// visible clouds when the camera is above the cloud layer
+	bool cloudShadows = true;		// moving cloud shadows on the ground (replace the game's cloud texture)
+	float cloudBase = 550.0f;		// height of the underside of the cloud layer (world units, the ground is mostly between 0 and 100)
+	float cloudThickness = 150.0f;
+	float cloudCoverage = 0.36f;		// 0 clear sky .. 1 overcast
+	float cloudDensity = 0.85f;		// opacity of the clouds
+	float cloudSpeed = 1.0f;			// drift speed
+	float cloudShadowStrength = 0.60f;
 };
+void VkGfx_SetEffectToggles(bool softShadows, bool ambientOcclusion, bool bloom, bool fxaa);		// the options menu check boxes, applied live
+bool VkGfx_CloudShadowsReplaceGameClouds();		// the game's own cloud texture on the terrain is switched off
 void VkGfx_Configure(const VkGfx_Settings& s);		// may also be called while the game runs: the effect settings are applied live
 bool VkGfx_NativeActive();				// true when the native renderer is the one in use
 bool VkGfx_Requested();
