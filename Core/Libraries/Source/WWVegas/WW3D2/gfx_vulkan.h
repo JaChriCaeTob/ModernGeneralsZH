@@ -21,6 +21,8 @@ struct VkGfx_Settings
 	float cloudSpeed = 1.0f;			// drift speed
 	float cloudShadowStrength = 0.85f;
 	// Options.ini keys DynamicLights, DynamicLightStrength, AnisotropicFiltering, PixelLighting, SpecularStrength
+	int shadowQuality = 1;			// 2 high (4096 shadow map, full filtering), 1 medium (2048 map, the default), 0 low (2048 map, fewer filter taps)
+	bool aoHalfResolution = true;	// ambient occlusion at half resolution
 	bool dynamicLights = true;		// explosions and other light pulses of the game light their surroundings (screen space)
 	float dynamicLightStrength = 1.0f;
 	int anisotropy = 16;				// anisotropic texture filtering, 0 or 1 = off

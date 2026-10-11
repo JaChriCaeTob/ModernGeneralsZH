@@ -233,6 +233,8 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 | `CloudDensity` | `0.85` | Opacity of the clouds. |
 | `CloudSpeed` | `1` | Drift speed. |
 | `CloudShadowStrength` | `0.85` | How dark the cloud shadows are, 0 to 1. |
+| `ShadowQuality` | `medium` | `high` (4096 shadow map), `medium` (2048 map) or `low` (2048 map and fewer filter taps). Costs about 1 ms per step at 2560x1440 on the test machine, with hardly any visible difference. |
+| `AmbientOcclusionQuality` | `half` | `half` renders the ambient occlusion at half resolution (about 0.8 ms cheaper), `full` at full resolution. |
 | `DynamicLights` | `yes` | Explosions, impacts and other light pulses of the game light the ground and units around them, wash out the sun's shadows nearby, and the strongest one casts shadows of its own. |
 | `DynamicLightStrength` | `1.0` | Brightness of those lights. |
 | `AnisotropicFiltering` | `16` | Texture sharpness at shallow viewing angles (0 or 1 = off, up to 16). |
@@ -252,6 +254,7 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 | `GENERALS_BLOOM` | bloom strength (default 0.16, `0` = off). |
 | `GENERALS_AO` | ambient occlusion strength (default 0.85, `0` = off). |
 | `GENERALS_FXAA` | `0` disables FXAA. |
+| `GENERALS_SHADOWQ`, `GENERALS_AOHALF` | shadow quality `0` low, `1` medium, `2` high; `0` = ambient occlusion at full resolution. |
 | `GENERALS_LIGHTS` | `0` disables the dynamic lights of explosions; `GENERALS_LIGHTSTRENGTH` scales them. |
 | `GENERALS_PIXELLIGHT` | `0` switches back to per-vertex lighting. |
 | `GENERALS_ANISO` | anisotropic filtering level, `0` = off. |
@@ -260,7 +263,7 @@ from a patched copy of `OptionsMenu.wnd` that `tools\install-to-game.ps1` writes
 
 ### Comparing the renderers
 
-`tools\compare-screenshots.ps1 -GameDir "<game folder>" [-Times "4,8,12,16,20"]` starts the game once with the original and once with the updated graphics and takes screenshots of the intro scene (the 3D scene behind the main menu) at the same game times (30 logic frames per second, so the same moment of the scene). It writes `original_<frame>.png`, `updated_<frame>.png` and `compare_<frame>.png` (original on the left) to `docs\screenshots` (not committed). The sun is fixed for the comparison, and the clouds follow game time, so repeated runs match. Needs Python with Pillow.
+`tools\compare-screenshots.ps1 -GameDir "<game folder>" [-Times "4,8,12,16,20"]` starts the game once with the original and once with the updated graphics and takes screenshots of the intro scene (the 3D scene behind the main menu) at the same game times (30 logic frames per second, so the same moment of the scene). It writes `original_<frame>.png`, `updated_<frame>.png` and `compare_<frame>.png` (original on the left) to `docs\screenshots` (not committed). The sun is fixed for the comparison, and the clouds follow game time, so repeated runs match. Needs Python with Pillow. For the same timing in every run, move the startup movies (`Data\<language>\Movies\EA_LOGO*.BIK` and `sizzle_review*.bik`) out of the game folder first.
 
 ### Command line flags
 

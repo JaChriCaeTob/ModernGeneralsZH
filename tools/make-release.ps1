@@ -32,6 +32,9 @@ $common = "@echo off`r`nrem 64-bit Zero Hour. -useCwd keeps this folder as the w
 Set-Content (Join-Path $stage "Play-Updated.bat") ($common + "rem Updated graphics: native Vulkan renderer with all enhancements (Options.ini can switch single effects off).`r`n`"%~dp0x64\generalszh64.exe`" -useCwd -win %*`r`n") -Encoding ASCII
 Set-Content (Join-Path $stage "Play-Original.bat") ($common + "rem Original rendering: Direct3D 8 through DXVK, no added effects.`r`nset GENERALS_GFX=d3d8`r`nset GENERALS_ORIGINAL=1`r`n`"%~dp0x64\generalszh64.exe`" -useCwd -win %*`r`n") -Encoding ASCII
 Set-Content (Join-Path $stage "Install-OptionsMenu.bat") "@echo off`r`nrem Optional: adds the graphics check boxes to the in-game options menu. Needs Python 3. Reads the menu from your own game files and writes a patched copy next to them.`r`ncd /d `"%~dp0`"`r`npython tools\patch_options_wnd.py `"%~dp0.`"`r`nif errorlevel 1 echo Failed: is Python 3 installed and is this the Zero Hour folder?`r`npause`r`n" -Encoding ASCII
+# optional helpers (the .bat files in tools/release): skip the startup movies for a quick start (moved, not deleted) and put them back
+Copy-Item (Join-Path $PSScriptRoot "release\Skip-IntroMovies.bat"), (Join-Path $PSScriptRoot "release\Restore-IntroMovies.bat") $stage
+
 Set-Content (Join-Path $stage "README-INSTALL.txt") @"
 Zero Hour x64 + Vulkan renderer (experimental)
 
@@ -46,8 +49,10 @@ Install
 3. Both start windowed. Remove -win inside the .bat for fullscreen. Set the resolution in the in-game options or in Options.ini.
 4. Optional: run Install-OptionsMenu.bat (needs Python 3) to get the graphics check boxes in Options > advanced display options.
    Without it every effect can still be switched in Options.ini (see the README on GitHub).
+5. Optional: run Skip-IntroMovies.bat for a quick start without the EA logo and trailer. Nothing is deleted, the movies are moved
+   to IntroMovies_off; Restore-IntroMovies.bat puts them back.
 
-Uninstall: delete the x64 and tools folders, the .bat files and, if you installed it, the Window folder.
+Uninstall: delete the x64 and tools folders, the .bat files and, if you installed it, the Window folder (run Restore-IntroMovies.bat first if you used it).
 
 Experimental one-time project: no support, no updates. Source code and all settings:
 https://github.com/JaChriCaeTob/ModernGeneralsZH

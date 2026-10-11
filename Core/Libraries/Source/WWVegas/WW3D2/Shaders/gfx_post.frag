@@ -265,7 +265,8 @@ float visibility()
 	float searchWorld = lightSize * range * 0.35;
 	float searchUV = clamp(searchWorld / mapWorld, 2.0 / size, 0.03);
 	float sum = 0.0; float cnt = 0.0;
-	for (int i = 0; i < 16; ++i)
+	const int nBlock = u.p2.x > 0.5 ? 16 : 8, nFilter = u.p2.x > 0.5 ? 24 : 12;
+	for (int i = 0; i < nBlock; ++i)
 	{
 		vec2 o = rot * kDisk[i] * searchUV;
 		float sd = texture(t1, suv + o).r;
@@ -277,12 +278,12 @@ float visibility()
 	float penWorld = (zr - zb) * range * lightSize;
 	float rUV = clamp(penWorld / mapWorld, 1.4 / size, 0.02);
 	float lit = 0.0;
-	for (int i = 0; i < 24; ++i)
+	for (int i = 0; i < nFilter; ++i)
 	{
 		vec2 o = rot * kDisk[i] * rUV;
 		lit += (texture(t1, suv + o).r < zr) ? 0.0 : 1.0;
 	}
-	return mix(1.0, lit / 24.0, strength * cs * cs) * cs;		// object shadows fade out where a cloud already blocks the sun
+	return mix(1.0, lit / float(nFilter), strength * cs * cs) * cs;		// object shadows fade out where a cloud already blocks the sun
 }
 
 void main()

@@ -19,6 +19,7 @@ void RecordCaster(const DrawUbo& u, VkDeviceSize vOff, VkDeviceSize iOff, uint32
 
 bool CreateShadowTargets()
 {
+	g_sh.mapSize = g_cfg.shadowQuality >= 2 ? 4096 : 2048;
 	g_sh.map = NewTarget(g_sh.mapSize, g_sh.mapSize, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 	g_sh.vis = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 	g_sh.lmap = NewTarget(2048, 2048, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
@@ -258,6 +259,7 @@ GpuTexture* ShadowStage(const PostUbo& base)
 	memcpy(a.lightVP, vp, 64);
 	FillCloudUbo(a, invView);
 	a.p0[3] = g_sh.strength;
+	a.p2[0] = g_cfg.shadowQuality >= 1 ? 1.0f : 0.0f;		// 0: fewer filter taps
 	a.shadowParams[0] = mapOk ? (float)g_sh.mapSize : 0.0f; a.shadowParams[1] = g_sh.lightSize; a.shadowParams[2] = range; a.shadowParams[3] = mapWorld;
 	GpuTexture* in[4] = { B.depthTex, mapOk ? g_sh.map : nullptr, nullptr, nullptr };
 	PostDraw(PASS_SHADOW, false, in, a, g_sh.vis->image, g_sh.vis->view, g_sh.vis->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);

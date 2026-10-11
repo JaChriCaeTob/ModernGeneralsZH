@@ -108,8 +108,9 @@ bool CreatePostTargets()
 	}
 	B.depthCopy = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);		// same format as the scene depth: a copy needs compatible formats
 	if (B.depthCopy) B.depthCopy->isDepth = true;
-	B.ao[0] = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, sampled);
-	B.ao[1] = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, sampled);
+	const uint32_t aw = g_cfg.aoHalfResolution ? (B.extent.width + 1) / 2 : B.extent.width, ah = g_cfg.aoHalfResolution ? (B.extent.height + 1) / 2 : B.extent.height;
+	B.ao[0] = NewTarget(aw, ah, VK_FORMAT_R8_UNORM, sampled);
+	B.ao[1] = NewTarget(aw, ah, VK_FORMAT_R8_UNORM, sampled);
 	// a view of the depth buffer for sampling; it is not owned by this wrapper
 	B.depthTex = new GpuTexture();
 	B.depthTex->image = B.depthImage; B.depthTex->width = B.extent.width; B.depthTex->height = B.extent.height; B.depthTex->isDepth = true;
@@ -360,20 +361,21 @@ int FillLightUbo(PostUbo& a)
 bool RunAoPasses(const PostUbo& ub)
 {
 	const float w = (float)B.extent.width, h = (float)B.extent.height;
+	const VkExtent2D aoExt = { B.ao[0]->width, B.ao[0]->height };
 	PostUbo a = ub;
 	a.proj[0] = B.lastProj[0]; a.proj[1] = B.lastProj[5]; a.proj[2] = B.lastProj[10]; a.proj[3] = B.lastProj[14];
 	a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f; memcpy(a.viewRect, B.lastViewport, 16);
 	a.p1[2] = g_postCfg.aoStrength; a.p1[3] = g_postCfg.aoRadius;
 	GpuTexture* inD[4] = { B.depthTex, nullptr, nullptr, nullptr };
-	PostDraw(PASS_AO, false, inD, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
+	PostDraw(PASS_AO, false, inD, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, aoExt, VK_IMAGE_LAYOUT_UNDEFINED, false);
 	B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
 	a.p2[0] = 1.0f / w; a.p2[1] = 0.0f;
 	GpuTexture* inH[4] = { B.ao[0], B.depthTex, nullptr, nullptr };
-	PostDraw(PASS_AOBLUR, false, inH, a, B.ao[1]->image, B.ao[1]->view, B.ao[1]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
+	PostDraw(PASS_AOBLUR, false, inH, a, B.ao[1]->image, B.ao[1]->view, B.ao[1]->format, aoExt, VK_IMAGE_LAYOUT_UNDEFINED, false);
 	B.ao[1]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[1]);
 	a.p2[0] = 0.0f; a.p2[1] = 1.0f / h;
 	GpuTexture* inV[4] = { B.ao[1], B.depthTex, nullptr, nullptr };
-	PostDraw(PASS_AOBLUR, false, inV, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, false);
+	PostDraw(PASS_AOBLUR, false, inV, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, aoExt, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, false);
 	B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
 	return true;
 }

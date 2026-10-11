@@ -2091,6 +2091,8 @@ void VkGfx_Configure(const VkGfx_Settings& s)
 	g_cloud.clouds = s.clouds; g_cloud.shadows = s.cloudShadows; g_cloud.base = s.cloudBase; g_cloud.thickness = std::max(s.cloudThickness, 10.0f);
 	g_cloud.coverage = s.cloudCoverage; g_cloud.density = s.cloudDensity; g_cloud.speed = s.cloudSpeed; g_cloud.shadowStrength = s.cloudShadowStrength;
 	if (const char* e = getenv("GENERALS_LIGHTS")) g_cfg.dynamicLights = e[0] != '0';
+	if (const char* e = getenv("GENERALS_SHADOWQ")) g_cfg.shadowQuality = atoi(e);
+	if (const char* e = getenv("GENERALS_AOHALF")) g_cfg.aoHalfResolution = e[0] != '0';
 	if (const char* e = getenv("GENERALS_LIGHTSTRENGTH")) g_cfg.dynamicLightStrength = (float)atof(e);
 	if (const char* e = getenv("GENERALS_PIXELLIGHT")) g_cfg.pixelLighting = e[0] != '0';
 	if (const char* e = getenv("GENERALS_ANISO")) g_cfg.anisotropy = atoi(e);
