@@ -153,6 +153,8 @@ static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 
 
 uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
 
+static const VkDeviceSize kRingPerFrame = 64ull * 1024 * 1024;		// ring buffer space of one frame in flight
+
 struct Backend
 {
 	HMODULE lib = nullptr;
@@ -184,6 +186,18 @@ struct Backend
 	VkDeviceSize pendingStaging = 0;
 	VkFence frameFence = VK_NULL_HANDLE;
 	VkSemaphore imageAvailable = VK_NULL_HANDLE;
+	// Two frames are in flight: while the GPU draws one, the CPU records the next. B.cmd, uploadCmd, frameFence and imageAvailable always point into the current slot.
+	struct FrameSlot
+	{
+		VkCommandBuffer cmd = VK_NULL_HANDLE, uploadCmd = VK_NULL_HANDLE;
+		VkFence fence = VK_NULL_HANDLE;
+		VkSemaphore imageAvailable = VK_NULL_HANDLE;
+		bool inFlight = false;
+		std::vector<GpuTexture*> defTex;						// freed when this slot's frame has finished
+		std::vector<std::pair<VkBuffer, Allocation>> defBuf;
+	} slots[2];
+	int slot = 0;
+	VkDeviceSize ringBase = 0, ringLimit = 0;			// the part of the ring buffer of the current slot
 	uint32_t imageIndex = 0;
 	bool acquired = false, rendering = false, cmdOpen = false;
 	GpuTexture* curTarget = nullptr;				// where the device draws: nullptr = back buffer, else a render target texture
@@ -373,12 +387,25 @@ void ImageBarrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImageLa
 	vkCmdPipelineBarrier2(cb, &d);
 }
 
+// Everything recorded in a command buffer waits for everything submitted before it: with two frames in flight the images and buffers of the
+// frames are shared, and this one barrier covers all the hazards between them.
+void GlobalBarrier(VkCommandBuffer cb)
+{
+	VkMemoryBarrier2 mb{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
+	mb.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT; mb.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+	mb.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT; mb.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+	VkDependencyInfo d{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	d.memoryBarrierCount = 1; d.pMemoryBarriers = &mb;
+	vkCmdPipelineBarrier2(cb, &d);
+}
+
 void BeginCommandBuffer()
 {
 	VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	VKCHECK(vkBeginCommandBuffer(B.cmd, &bi));
 	B.cmdOpen = true;
+	GlobalBarrier(B.cmd);
 }
 
 bool CreatePostTargets();
@@ -438,7 +465,7 @@ bool CreateSwapchain()
 
 	VkSwapchainCreateInfoKHR sc{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
 	sc.surface = B.surface;
-	sc.minImageCount = std::max(2u, caps.minImageCount);
+	sc.minImageCount = std::max(3u, caps.minImageCount);
 	if (caps.maxImageCount && sc.minImageCount > caps.maxImageCount) sc.minImageCount = caps.maxImageCount;
 	sc.imageFormat = chosen.format; sc.imageColorSpace = chosen.colorSpace; sc.imageExtent = ext; sc.imageArrayLayers = 1;
 	sc.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -570,6 +597,7 @@ void OpenUploadCmd()
 	bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(B.uploadCmd, &bi);
 	B.uploadOpen = true;
+	GlobalBarrier(B.uploadCmd);
 }
 
 // Records the upload of all levels into the frame's upload command buffer. The staging memory stays alive until the frame's fence.
@@ -607,6 +635,7 @@ void UploadLevels(GpuTexture* t, const std::vector<const NullSurface*>& levels)
 		bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 		vkBeginCommandBuffer(B.uploadCmd, &bi);
 		B.uploadOpen = true;
+		GlobalBarrier(B.uploadCmd);
 	}
 	VkCommandBuffer cb = B.uploadCmd;
 	ImageBarrier(cb, t->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT,
@@ -957,12 +986,17 @@ bool CreateInstanceAndDevice(HWND window)
 	VKCHECK(vkCreateCommandPool(B.device, &cpi, nullptr, &B.pool));
 	VkCommandBufferAllocateInfo cai{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	cai.commandPool = B.pool; cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; cai.commandBufferCount = 1;
-	VKCHECK(vkAllocateCommandBuffers(B.device, &cai, &B.cmd));
-	VKCHECK(vkAllocateCommandBuffers(B.device, &cai, &B.uploadCmd));
 	VkFenceCreateInfo fci{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-	VKCHECK(vkCreateFence(B.device, &fci, nullptr, &B.frameFence));
 	VkSemaphoreCreateInfo sei{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-	VKCHECK(vkCreateSemaphore(B.device, &sei, nullptr, &B.imageAvailable));
+	for (int i = 0; i < 2; ++i)
+	{
+		VKCHECK(vkAllocateCommandBuffers(B.device, &cai, &B.slots[i].cmd));
+		VKCHECK(vkAllocateCommandBuffers(B.device, &cai, &B.slots[i].uploadCmd));
+		VKCHECK(vkCreateFence(B.device, &fci, nullptr, &B.slots[i].fence));
+		VKCHECK(vkCreateSemaphore(B.device, &sei, nullptr, &B.slots[i].imageAvailable));
+	}
+	B.slot = 0;
+	B.cmd = B.slots[0].cmd; B.uploadCmd = B.slots[0].uploadCmd; B.frameFence = B.slots[0].fence; B.imageAvailable = B.slots[0].imageAvailable;
 
 	// pipeline layout: one push descriptor set (uniform block + 4 combined image samplers)
 	VkDescriptorSetLayoutBinding lb[10] = {};
@@ -987,7 +1021,8 @@ bool CreateInstanceAndDevice(HWND window)
 	CreatePostShaders();
 
 	// per frame ring buffer and the constant default vertex attributes
-	B.ringSize = 64ull * 1024 * 1024;
+	B.ringSize = 2 * kRingPerFrame;
+	B.ringBase = 0; B.ringLimit = kRingPerFrame; B.ringCursor = 0;
 	if (!CreateBuffer(B.ringSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, B.ring, B.ringAlloc))
 		return false;
@@ -1216,6 +1251,8 @@ void WriteShotFile()
 	g_shotPath.clear();
 }
 
+uint32_t g_drawsLast = 0;
+
 void PresentFrame()
 {
 	if (!B.ready)
@@ -1243,6 +1280,7 @@ void PresentFrame()
 	}
 	if (g_frame % 4000 == 0)
 		Log("frame %u: drawn %u, skipped: offscreen %u, pixel shader %u, vertex shader %u, stencil %u, ring full %u | calls: DrawPrimitive %u DrawIndexed %u UP %u IndexedUP %u | no vb %u no ib %u, no vertices %u, no rendering %u", g_frame, g_cnt[0], g_cnt[1], g_cnt[2], g_cnt[3], g_cnt[4], g_cnt[5], g_cnt[6], g_cnt[7], g_cnt[10], g_cnt[11], g_cnt[8], g_cnt[9], g_cnt[12], g_cnt[13]);
+	g_drawsLast = g_cnt[14];
 	memset(g_cnt, 0, sizeof(g_cnt));
 	const bool ready = (B.postOn && B.stage == 0 && B.hdr) ? RunPostProcess() : EnsureRendering();
 	if (!ready)
@@ -1254,7 +1292,7 @@ void PresentFrame()
 		vkEndCommandBuffer(B.cmd);
 		vkResetCommandBuffer(B.cmd, 0);
 		BeginCommandBuffer();
-		B.ringCursor = 0;
+		B.ringCursor = B.ringBase;
 		return;
 	}
 	EndPass();
@@ -1282,15 +1320,49 @@ void PresentFrame()
 	VkResult pr = vkQueuePresentKHR(B.queue, &pi);
 	B.acquired = false; B.colorLoaded = false; B.depthLoaded = false; B.semaphoreUsed = false; B.stage = 1; B.scene3D = false;
 
-	vkWaitForFences(B.device, 1, &B.frameFence, VK_TRUE, UINT64_MAX);
-	vkResetFences(B.device, 1, &B.frameFence);
-	if (shot) WriteShotFile();
+	if (shot)
+	{
+		// a screenshot is read back right away: wait for this frame (the fence stays signalled and is waited for again below)
+		vkWaitForFences(B.device, 1, &B.frameFence, VK_TRUE, UINT64_MAX);
+		WriteShotFile();
+	}
+	B.slots[B.slot].inFlight = true;
+	B.slots[B.slot].defTex.swap(B.deferredTextures);			// what was retired during this frame is freed when the frame has finished
+	B.slots[B.slot].defBuf.swap(B.deferredBuffers);
+
+	// next frame: the other slot. Only its own previous frame has to be finished (the GPU may still be busy with the frame just submitted).
+	const int next = 1 - B.slot;
+	{
+		LARGE_INTEGER t0q; QueryPerformanceCounter(&t0q);
+		if (B.slots[next].inFlight)
+		{
+			vkWaitForFences(B.device, 1, &B.slots[next].fence, VK_TRUE, UINT64_MAX);
+			vkResetFences(B.device, 1, &B.slots[next].fence);
+			B.slots[next].inFlight = false;
+		}
+		// timing: how long the CPU waits for the GPU, against the whole frame
+		static LARGE_INTEGER freq = []{ LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
+		static double waitMs = 0.0, totalMs = 0.0; static int frames = 0; static LARGE_INTEGER lastEnd = {};
+		LARGE_INTEGER t1q; QueryPerformanceCounter(&t1q);
+		waitMs += (double)(t1q.QuadPart - t0q.QuadPart) * 1000.0 / (double)freq.QuadPart;
+		if (lastEnd.QuadPart) totalMs += (double)(t1q.QuadPart - lastEnd.QuadPart) * 1000.0 / (double)freq.QuadPart;
+		lastEnd = t1q;
+		if (++frames == 600)
+		{
+			Log("timing: %.2f ms per frame, of which the CPU waits %.2f ms for the GPU (%d draws last frame)", totalMs / 599.0, waitMs / 600.0, (int)g_drawsLast);
+			waitMs = totalMs = 0.0; frames = 0; lastEnd.QuadPart = 0;
+		}
+	}
+	for (auto& d : B.slots[next].defBuf) { vkDestroyBuffer(B.device, d.first, nullptr); Free(d.second); }
+	B.slots[next].defBuf.clear();
+	for (GpuTexture* g : B.slots[next].defTex) DestroyGpuTexture(g);
+	B.slots[next].defTex.clear();
+	B.pendingStaging = 0;
+	B.slot = next;
+	B.cmd = B.slots[next].cmd; B.uploadCmd = B.slots[next].uploadCmd; B.frameFence = B.slots[next].fence; B.imageAvailable = B.slots[next].imageAvailable;
+	B.ringBase = (VkDeviceSize)next * kRingPerFrame; B.ringLimit = B.ringBase + kRingPerFrame; B.ringCursor = B.ringBase;
 	vkResetCommandBuffer(B.cmd, 0);
 	BeginCommandBuffer();
-	B.ringCursor = 0;
-	FreeDeferredBuffers();
-	for (GpuTexture* g : B.deferredTextures) DestroyGpuTexture(g);
-	B.deferredTextures.clear();
 	if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
 		DestroySwapchain();
 }
@@ -1738,7 +1810,7 @@ private:
 		auto take = [&](VkDeviceSize bytes, VkDeviceSize align) -> VkDeviceSize
 		{
 			VkDeviceSize at = (B.ringCursor + align - 1) & ~(align - 1);
-			if (at + bytes > B.ringSize) return ~0ull;
+			if (at + bytes > B.ringLimit) return ~0ull;
 			B.ringCursor = at + bytes;
 			return at;
 		};
@@ -1942,7 +2014,7 @@ private:
 		if (waterKind)
 		{
 			const VkDeviceSize pOff = ((B.ringCursor + B.uboAlign - 1) / B.uboAlign) * B.uboAlign;
-			if (pOff + 512 <= B.ringSize)
+			if (pOff + 512 <= B.ringLimit)
 			{
 				memcpy((char*)B.ringAlloc.mapped + pOff, m_psConst, 512);
 				B.ringCursor = pOff + 512;

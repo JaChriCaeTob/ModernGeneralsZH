@@ -229,7 +229,7 @@ bool CreatePostShaders()
 VkDeviceSize RingTake(VkDeviceSize bytes, VkDeviceSize align)
 {
 	VkDeviceSize at = (B.ringCursor + align - 1) & ~(align - 1);
-	if (at + bytes > B.ringSize) return ~0ull;
+	if (at + bytes > B.ringLimit) return ~0ull;
 	B.ringCursor = at + bytes;
 	return at;
 }
