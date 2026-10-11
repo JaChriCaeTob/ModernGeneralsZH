@@ -309,6 +309,18 @@ void main()
 
 #elif defined(PASS_AO)
 
+// white noise from an integer hash (PCG): no lattice, so nothing survives the blur as a pattern
+uvec2 pcg2d(uvec2 v)
+{
+	v = v * 1664525u + 1013904223u;
+	v.x += v.y * 1664525u; v.y += v.x * 1664525u;
+	v ^= v >> 16u;
+	v.x += v.y * 1664525u; v.y += v.x * 1664525u;
+	v ^= v >> 16u;
+	return v;
+}
+float hashNoise(vec2 p) { return float(pcg2d(uvec2(p)).x) * (1.0 / 4294967296.0); }
+
 void main()
 {
 	float d = texture(t0, uv).r;
@@ -325,7 +337,7 @@ void main()
 	float radius = u.p1.w;
 	float dist = abs(P.z);
 	float rpx = clamp(radius * abs(u.proj.x) * 0.5 * u.texel.z / dist, 3.0, 110.0);
-	float ang = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+	float ang = 6.2831853 * hashNoise(gl_FragCoord.xy);		// not interleaved gradient noise: after the blur its regular structure left faint horizontal stripes on flat ground
 	float occ = 0.0;
 	const int N = 20;
 	for (int i = 0; i < N; ++i)
