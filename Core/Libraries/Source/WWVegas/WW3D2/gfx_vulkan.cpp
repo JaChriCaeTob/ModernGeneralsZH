@@ -202,6 +202,8 @@ struct Backend
 	int stage = 1;									// 0: 3D scene into the HDR image (between VkGfx_BeginScene3D and EndScene3D), 1: straight onto the swapchain
 	bool scene3D = false;							// a 3D draw happened in this frame
 	bool projCaptured = false;
+	bool lightingApplied = false;					// the scene's ambient occlusion and shadows were already multiplied in (first particle draw), or that was tried
+	bool lightingDone = false;						// ... and something was actually applied
 	bool depthCopyDone = false;						// this frame's depth buffer was copied for the soft particles
 	GpuTexture* depthCopy = nullptr;
 	bool depthLoaded = false;						// the depth buffer already holds this frame's scene
@@ -1147,6 +1149,7 @@ struct DynLight { float pos[3]; float color[3]; float range; };
 struct FxState
 {
 	std::vector<DynLight> lights;
+	bool testAdded = false;
 	float ambient[3] = { 0.45f, 0.5f, 0.6f }, diffuse[3] = { 1.0f, 0.95f, 0.85f };
 } g_fx;
 
@@ -1710,6 +1713,10 @@ private:
 
 		const bool softWanted = g_softDraw && B.postOn && B.stage == 0 && !B.curTarget && !pretransformed && g_postCfg.softParticles > 0.0f && B.depthCopy
 			&& m_renderStates[D3DRS_ALPHABLENDENABLE] && !m_renderStates[D3DRS_ZWRITEENABLE] && m_renderStates[D3DRS_ZENABLE];
+		const bool particleDraw = g_softDraw && B.postOn && B.stage == 0 && !B.curTarget && !pretransformed && B.depthTex
+			&& m_renderStates[D3DRS_ALPHABLENDENABLE] && !m_renderStates[D3DRS_ZWRITEENABLE] && m_renderStates[D3DRS_ZENABLE];
+		if (particleDraw && !B.lightingApplied && B.scene3D && B.projCaptured && (B.rendering || B.depthLoaded))
+			ApplyLightingMidFrame();
 		if (softWanted && !B.depthCopyDone && (B.rendering || B.depthLoaded))
 			MakeDepthCopy();
 		const bool soft = softWanted && B.depthCopyDone;
@@ -2021,7 +2028,7 @@ void VkGfx_SetSceneLighting(const float ambient[3], const float diffuse[3])
 	for (int i = 0; i < 3; ++i) { g_fx.ambient[i] = ambient[i]; g_fx.diffuse[i] = diffuse[i]; }
 }
 void VkGfx_SetGameTime(float seconds) { g_gameTime = seconds; }
-void VkGfx_ClearDynamicLights() { g_fx.lights.clear(); }
+void VkGfx_ClearDynamicLights() { g_fx.lights.clear(); g_fx.testAdded = false; }
 void VkGfx_RequestScreenshot(const char* path) { if (path) g_shotPath = path; }
 void VkGfx_AddDynamicLight(const float pos[3], const float color[3], float range)
 {
@@ -2090,7 +2097,7 @@ void VkGfx_BeginScene3D(float sunX, float sunY, float sunZ)
 	B.projCaptured = false;
 	if (!B.ready || !B.postOn || !B.hdr || B.stage == 0) return;
 	EndPass();
-	B.stage = 0; B.scene3D = true; B.colorLoaded = false; B.depthLoaded = false; B.depthCopyDone = false;
+	B.stage = 0; B.scene3D = true; B.colorLoaded = false; B.depthLoaded = false; B.depthCopyDone = false; B.lightingApplied = false; B.lightingDone = false;
 }
 bool VkGfx_ShadowMapsActive() { return g_sh.on && B.postOn && B.ready; }
 void VkGfx_SuppressSceneDraws(bool s) { g_sh.suppress = s; }

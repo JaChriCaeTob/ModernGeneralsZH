@@ -19,6 +19,7 @@ $shaders = @(
     @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostShadowFrag"; Define = "PASS_SHADOW" },
     @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostCloudsFrag"; Define = "PASS_CLOUDS" },
     @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostLightsFrag"; Define = "PASS_LIGHTS" },
+    @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostApplyFrag"; Define = "PASS_APPLY" },
     @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostAoFrag"; Define = "PASS_AO" },
     @{ Source = "Shaders\gfx_post.frag"; Name = "g_gfxPostAoBlurFrag"; Define = "PASS_AOBLUR" },
     @{ Source = "Shaders\gfx_water.frag"; Name = "g_gfxWaterRiverFrag"; Define = "RIVER" },

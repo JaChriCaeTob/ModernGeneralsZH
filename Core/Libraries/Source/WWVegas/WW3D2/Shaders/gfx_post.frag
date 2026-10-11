@@ -5,6 +5,7 @@
 //   BLOOM_UP     up sample, added onto the next larger level
 //   COMPOSITE    scene + bloom, soft highlight roll-off and colour grading
 //   FXAA         edge anti-aliasing of the finished image
+//   APPLY        multiplies ambient occlusion and shadows into the scene (blend mode: scene * output)
 //   LIGHTS       light pulses of the game (explosions, impacts) lighting the scene around them, in screen space; the strongest one casts shadows
 
 layout(std140, set = 0, binding = 0) uniform Post
@@ -145,6 +146,15 @@ void main()
 	col = min(col, vec3(6.0));
 	if (any(isnan(col)) || isnan(T)) { outColor = vec4(0.0); return; }
 	outColor = vec4(col * fade, (1.0 - T) * fade);
+}
+
+#elif defined(PASS_APPLY)
+
+void main()
+{
+	float ao = u.p1.z > 0.0 ? texture(t0, uv).r : 1.0;
+	float vis = u.sunDir.w > 0.0 ? texture(t1, uv).r : 1.0;
+	outColor = vec4(vec3(ao * vis), 1.0);
 }
 
 #elif defined(PASS_LIGHTS)

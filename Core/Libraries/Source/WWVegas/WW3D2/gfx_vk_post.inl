@@ -5,7 +5,7 @@
 // is then drawn straight onto the swapchain ("stage 1") so text and icons are never filtered.
 
 static const int kMaxScreenLights = 12;
-enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_SHADOW, PASS_CLOUDS, PASS_LIGHTS, PASS_COUNT };
+enum PostPass { PASS_BLOOM_DOWN0, PASS_BLOOM_DOWN, PASS_BLOOM_UP, PASS_COMPOSITE, PASS_FXAA, PASS_AO, PASS_AOBLUR, PASS_SHADOW, PASS_CLOUDS, PASS_LIGHTS, PASS_APPLY, PASS_COUNT };
 
 static void RigidInverse(const float* m, float* out);
 struct PostUbo;
@@ -176,6 +176,11 @@ VkPipeline GetPostPipe(int pass, VkFormat fmt, int blendMode)
 		cba.blendEnable = VK_TRUE; cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA; cba.colorBlendOp = VK_BLEND_OP_ADD;
 		cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE; cba.alphaBlendOp = VK_BLEND_OP_ADD;
 	}
+	else if (blendMode == 4)		// multiply: scene * source colour (ambient occlusion and shadows)
+	{
+		cba.blendEnable = VK_TRUE; cba.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO; cba.dstColorBlendFactor = VK_BLEND_FACTOR_SRC_COLOR; cba.colorBlendOp = VK_BLEND_OP_ADD;
+		cba.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; cba.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE; cba.alphaBlendOp = VK_BLEND_OP_ADD;
+	}
 	else if (blendMode == 2)		// premultiplied colour over the scene
 	{
 		cba.blendEnable = VK_TRUE; cba.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; cba.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; cba.colorBlendOp = VK_BLEND_OP_ADD;
@@ -210,7 +215,7 @@ bool CreatePostShaders()
 		{ g_gfxPostBloomDown0Frag, sizeof(g_gfxPostBloomDown0Frag) }, { g_gfxPostBloomDownFrag, sizeof(g_gfxPostBloomDownFrag) },
 		{ g_gfxPostBloomUpFrag, sizeof(g_gfxPostBloomUpFrag) }, { g_gfxPostCompositeFrag, sizeof(g_gfxPostCompositeFrag) },
 		{ g_gfxPostFxaaFrag, sizeof(g_gfxPostFxaaFrag) }, { g_gfxPostAoFrag, sizeof(g_gfxPostAoFrag) }, { g_gfxPostAoBlurFrag, sizeof(g_gfxPostAoBlurFrag) }, { g_gfxPostShadowFrag, sizeof(g_gfxPostShadowFrag) }, { g_gfxPostCloudsFrag, sizeof(g_gfxPostCloudsFrag) },
-		{ g_gfxPostLightsFrag, sizeof(g_gfxPostLightsFrag) } };
+		{ g_gfxPostLightsFrag, sizeof(g_gfxPostLightsFrag) }, { g_gfxPostApplyFrag, sizeof(g_gfxPostApplyFrag) } };
 	for (int i = 0; i < PASS_COUNT; ++i)
 	{
 		smi.codeSize = fs[i].size; smi.pCode = fs[i].code;
@@ -315,8 +320,9 @@ int FillLightUbo(PostUbo& a)
 {
 	int numLights = 0;
 	static const bool testLight = getenv("GENERALS_TESTLIGHT") != nullptr;		// debugging: a light 120 units wide where the middle of the screen meets the ground
-	if (testLight && B.haveProj)
+	if (testLight && B.haveProj && !g_fx.testAdded)
 	{
+		g_fx.testAdded = true;
 		float iv[16];
 		RigidInverse(B.lastView, iv);
 		float nx = 0.0f, ny = 0.0f;
@@ -348,6 +354,73 @@ int FillLightUbo(PostUbo& a)
 	}
 	a.lightCfg[0] = (float)numLights; a.lightCfg[1] = g_cfg.dynamicLightStrength * 1.3f;
 	return numLights;
+}
+
+// The ambient occlusion passes (needs the scene depth readable). The result is in B.ao[0].
+bool RunAoPasses(const PostUbo& ub)
+{
+	const float w = (float)B.extent.width, h = (float)B.extent.height;
+	PostUbo a = ub;
+	a.proj[0] = B.lastProj[0]; a.proj[1] = B.lastProj[5]; a.proj[2] = B.lastProj[10]; a.proj[3] = B.lastProj[14];
+	a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f; memcpy(a.viewRect, B.lastViewport, 16);
+	a.p1[2] = g_postCfg.aoStrength; a.p1[3] = g_postCfg.aoRadius;
+	GpuTexture* inD[4] = { B.depthTex, nullptr, nullptr, nullptr };
+	PostDraw(PASS_AO, false, inD, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
+	B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
+	a.p2[0] = 1.0f / w; a.p2[1] = 0.0f;
+	GpuTexture* inH[4] = { B.ao[0], B.depthTex, nullptr, nullptr };
+	PostDraw(PASS_AOBLUR, false, inH, a, B.ao[1]->image, B.ao[1]->view, B.ao[1]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
+	B.ao[1]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[1]);
+	a.p2[0] = 0.0f; a.p2[1] = 1.0f / h;
+	GpuTexture* inV[4] = { B.ao[1], B.depthTex, nullptr, nullptr };
+	PostDraw(PASS_AOBLUR, false, inV, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, false);
+	B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
+	return true;
+}
+
+// Called at the first particle draw of the scene: ambient occlusion and shadows are multiplied into the scene so far (everything opaque), and the
+// particles are then drawn on top of the darkened image instead of being darkened by what is behind them.
+void ApplyLightingMidFrame()
+{
+	B.lightingApplied = true;
+	EndPass();
+	if (!B.hdr || !B.depthTex || !B.haveProj || !B.projCaptured || B.hdr->width != B.extent.width || B.hdr->height != B.extent.height)
+		return;
+	const bool wantAo = g_postCfg.aoStrength > 0.0f && B.ao[0];
+	const bool cloudsOn = g_cloud.shadows || g_cloud.clouds;
+	const bool wantShadow = ShadowsEnabled() || (cloudsOn && g_sh.haveSun);
+	if (!wantAo && !wantShadow)
+		return;
+	PostUbo ub;
+	memset(&ub, 0, sizeof(ub));
+	const float w = (float)B.extent.width, h = (float)B.extent.height;
+	ub.texel[0] = 1.0f / w; ub.texel[1] = 1.0f / h; ub.texel[2] = w; ub.texel[3] = h;
+	ub.p2[1] = 1.0f;
+	FillLightUbo(ub);		// the lights wash out the sun's shadows around them
+	// the scene's depth buffer becomes readable
+	ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+	GpuTexture* shadowVis = wantShadow ? ShadowStage(ub) : nullptr;
+	const bool haveAo = wantAo && RunAoPasses(ub);
+	if (haveAo || shadowVis)
+	{
+		float iv[16];
+		RigidInverse(B.lastView, iv);
+		PostUbo c = ub;
+		FillCloudUbo(c, iv);
+		c.p1[2] = haveAo ? g_postCfg.aoStrength : 0.0f;
+		c.sunDir[3] = shadowVis ? 1.0f : 0.0f;
+		GpuTexture* inA[4] = { haveAo ? B.ao[0] : nullptr, shadowVis, nullptr, nullptr };
+		PostDraw(PASS_APPLY, 4, inA, c, B.hdr->image, B.hdr->view, B.hdr->format, B.extent, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, true);
+		B.hdr->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		B.lightingDone = true;
+	}
+	// the scene's depth buffer is an attachment again, the particles are drawn on top of what is there
+	ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT,
+		VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+	B.colorLoaded = true; B.depthLoaded = true;
 }
 
 // Runs the post processing chain and leaves the swapchain image holding the finished scene, in stage 1 (interface).
@@ -384,27 +457,11 @@ bool RunPostProcess()
 		ImageBarrier(B.cmd, B.depthImage, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 			VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_READ_BIT);
-		shadowVis = ShadowStage(ub);
+		if (!B.lightingApplied)
+			shadowVis = ShadowStage(ub);
 	}
-	if (has3D && B.haveProj && g_postCfg.aoStrength > 0.0f && B.depthTex && B.ao[0])
-	{
-		PostUbo a = ub;
-		a.proj[0] = B.lastProj[0]; a.proj[1] = B.lastProj[5]; a.proj[2] = B.lastProj[10]; a.proj[3] = B.lastProj[14];
-		a.p2[3] = B.lastProj[11] < 0.0f ? -1.0f : 1.0f; memcpy(a.viewRect, B.lastViewport, 16);
-		a.p1[2] = g_postCfg.aoStrength; a.p1[3] = g_postCfg.aoRadius;
-		GpuTexture* inD[4] = { B.depthTex, nullptr, nullptr, nullptr };
-		PostDraw(PASS_AO, false, inD, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
-		B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
-		a.p2[0] = 1.0f / w; a.p2[1] = 0.0f;
-		GpuTexture* inH[4] = { B.ao[0], B.depthTex, nullptr, nullptr };
-		PostDraw(PASS_AOBLUR, false, inH, a, B.ao[1]->image, B.ao[1]->view, B.ao[1]->format, B.extent, VK_IMAGE_LAYOUT_UNDEFINED, false);
-		B.ao[1]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[1]);
-		a.p2[0] = 0.0f; a.p2[1] = 1.0f / h;
-		GpuTexture* inV[4] = { B.ao[1], B.depthTex, nullptr, nullptr };
-		PostDraw(PASS_AOBLUR, false, inV, a, B.ao[0]->image, B.ao[0]->view, B.ao[0]->format, B.extent, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, false);
-		B.ao[0]->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; ToSampled(B.ao[0]);
-		haveAo = true;
-	}
+	if (!B.lightingApplied && has3D && B.haveProj && g_postCfg.aoStrength > 0.0f && B.depthTex && B.ao[0])
+		haveAo = RunAoPasses(ub);
 	// dynamic lights of explosions: the strongest one casts shadows from a lamp above it
 	if (has3D && B.haveProj && B.depthTex && lightsOn)
 	{
