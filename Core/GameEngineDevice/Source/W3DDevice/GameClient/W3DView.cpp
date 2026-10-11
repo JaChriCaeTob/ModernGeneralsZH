@@ -2280,7 +2280,12 @@ void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight)
 	setDefaultPitch(pitch);
 	// the main menu scene is composed for the game's own zoom limit: with the raised one the camera shows the edge of the map
 	const Bool menuScene = TheGameLogic && TheGameLogic->isInShellGame();
-	m_maxHeightAboveGround = (menuScene && g_originalMaxCameraHeight > 0.0f ? g_originalMaxCameraHeight : TheGlobalData->m_maxCameraHeight)*maxHeight;
+	// Missions set their own multiplier here (the campaign scripts' "set default camera"). Applied on top of the raised limit it could reach
+	// 1.5x or 2x of it, so for real games a mission may only make the limit tighter, never wider than the configured MaxCameraHeight.
+	if (menuScene && g_originalMaxCameraHeight > 0.0f)
+		m_maxHeightAboveGround = g_originalMaxCameraHeight*maxHeight;
+	else
+		m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight*(maxHeight < 1.0f ? maxHeight : 1.0f);
 	if (m_minHeightAboveGround > m_maxHeightAboveGround)
 		m_maxHeightAboveGround = m_minHeightAboveGround;
 }
