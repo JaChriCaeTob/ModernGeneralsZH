@@ -32,6 +32,7 @@
 #include "Common/AudioAffect.h"
 #include "Common/AudioHandleSpecialValues.h"
 #include "Common/FramePacer.h"
+#include "Common/OptionPreferences.h"
 #include "Common/GameAudio.h"
 #include "Common/MapObject.h"							// For MAP_XY_FACTOR
 #include "Common/PartitionSolver.h"
@@ -6594,7 +6595,12 @@ void ScriptActions::executeAction( ScriptAction *pAction )
 				TheFramePacer->setFramesPerSecondLimit(pAction->getParameter(0)->getInt());
 			}
 			// Setting the fps limit doesn't do much good if we don't use it.  jba.
-			TheWritableGlobalData->m_useFpsLimit = true;
+			// Campaign scripts call this at the start of a mission: it must not undo Options.ini FPSLimit = no (the default of this build).
+			{
+				OptionPreferences optionPref;
+				if (!optionPref.isFPSLimitDisabledByUser())
+					TheWritableGlobalData->m_useFpsLimit = true;
+			}
 			return;
 
 		case ScriptAction::DISABLE_SPECIAL_POWER_DISPLAY:
