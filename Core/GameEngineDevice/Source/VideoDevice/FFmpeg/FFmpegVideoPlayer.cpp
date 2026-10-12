@@ -44,6 +44,9 @@
 extern "C" {
 	#include <libavcodec/avcodec.h>
 	#include <libswscale/swscale.h>
+	#include <libswresample/swresample.h>
+	#include <libavutil/channel_layout.h>
+	#include <libavutil/samplefmt.h>
 }
 
 #ifdef RTS_HAS_OPENAL
@@ -52,6 +55,11 @@ extern "C" {
 #endif
 
 #include <chrono>
+#include <vector>
+#include <algorithm>
+#ifndef RTS_USE_OPENAL
+#include "MiniMilesVideo.h"
+#endif
 
 //----------------------------------------------------------------------------
 //         Externals
@@ -335,6 +343,11 @@ FFmpegVideoStream::FFmpegVideoStream(FFmpegFile* file)
 
 FFmpegVideoStream::~FFmpegVideoStream()
 {
+#ifndef RTS_USE_OPENAL
+	MiniMiles_VideoAudioClose(m_videoAudio);
+	m_videoAudio = nullptr;
+	swr_free(&m_swr);
+#endif
 	av_freep(&m_audioBuffer);
 	av_frame_free(&m_frame);
 	sws_freeContext(m_swsContext);
@@ -384,8 +397,51 @@ void FFmpegVideoStream::onFrame(AVFrame *frame, int stream_idx, int stream_type,
 		ALenum format = OpenALAudioManager::getALFormat(frame->ch_layout.nb_channels, bytesPerSample * 8);
 		audioStream->bufferData(frameData, frameSize, format, frame->sample_rate);
 	}
+#else
+	else if (stream_type == AVMEDIA_TYPE_AUDIO) {
+		videoStream->pushAudio(frame);
+	}
 #endif
 }
+
+#ifndef RTS_USE_OPENAL
+//============================================================================
+// FFmpegVideoStream::pushAudio
+// Converts one decoded audio frame to 16 bit interleaved and hands it to the video audio of MiniMiles.
+//============================================================================
+void FFmpegVideoStream::pushAudio(AVFrame *frame)
+{
+	if (m_audioFailed || frame->nb_samples <= 0)
+		return;
+	const int outChannels = frame->ch_layout.nb_channels >= 2 ? 2 : 1;
+	if (!m_videoAudio)
+	{
+		m_videoAudio = MiniMiles_VideoAudioOpen((unsigned)outChannels, (unsigned)frame->sample_rate);
+		AVChannelLayout outLayout;
+		av_channel_layout_default(&outLayout, outChannels);
+		if (!m_videoAudio || swr_alloc_set_opts2(&m_swr, &outLayout, AV_SAMPLE_FMT_S16, frame->sample_rate, &frame->ch_layout, static_cast<AVSampleFormat>(frame->format), frame->sample_rate, 0, nullptr) < 0 || swr_init(m_swr) < 0)
+		{
+			av_channel_layout_uninit(&outLayout);
+			MiniMiles_VideoAudioClose(m_videoAudio);
+			m_videoAudio = nullptr;
+			swr_free(&m_swr);
+			m_audioFailed = true;
+			DEBUG_LOG(("Video audio could not be started"));
+			return;
+		}
+		av_channel_layout_uninit(&outLayout);
+		// the voice volume of the game, but never so low that a movie is inaudible
+		Real volume = TheAudio ? TheAudio->getVolume(AudioAffect_Speech) : 1.0f;
+		MiniMiles_VideoAudioSetVolume(m_videoAudio, std::max<Real>(volume, 0.6f));
+	}
+	const int maxOut = swr_get_out_samples(m_swr, frame->nb_samples) + 64;
+	std::vector<short> out((size_t)maxOut * outChannels);
+	uint8_t *dst = reinterpret_cast<uint8_t *>(out.data());
+	const int got = swr_convert(m_swr, &dst, maxOut, const_cast<const uint8_t **>(frame->extended_data), frame->nb_samples);
+	if (got > 0)
+		MiniMiles_VideoAudioWrite(m_videoAudio, out.data(), (unsigned)got);
+}
+#endif
 
 
 //============================================================================

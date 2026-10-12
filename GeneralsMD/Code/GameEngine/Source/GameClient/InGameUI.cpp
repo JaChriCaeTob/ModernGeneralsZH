@@ -28,6 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#include "Common/OptionPreferences.h"
 
 #define DEFINE_SHADOW_NAMES
 
@@ -1060,6 +1061,8 @@ InGameUI::PlayerInfoList::LastValues::LastValues()
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
+static Bool introTimerWanted();
+
 InGameUI::InGameUI()
 {
 	Int i;
@@ -3798,7 +3801,7 @@ void InGameUI::postWindowDraw()
 		drawSystemTime(hudOffsetX, hudOffsetY);
 	}
 
-	if ( (m_gameTimePointSize > 0) && !TheGameLogic->isInShellGame() && TheGameLogic->isInGame() )
+	if ( (m_gameTimePointSize > 0) && (!TheGameLogic->isInShellGame() || introTimerWanted()) && TheGameLogic->isInGame() )
 	{
 		drawGameTime();
 	}
@@ -6261,6 +6264,27 @@ void InGameUI::drawRenderFps(Int &x, Int &y)
 		m_renderFpsString->draw(m_renderFpsPosition.x, m_renderFpsPosition.y, m_renderFpsColor, m_renderFpsDropColor);
 		m_renderFpsLimitString->draw(m_renderFpsPosition.x + m_renderFpsString->getWidth(), m_renderFpsPosition.y, m_renderFpsLimitColor, m_renderFpsDropColor);
 	}
+}
+
+// Options.ini IntroTimer = yes (or the environment variable GENERALS_INTROTIMER): the game clock is also shown in the main menu scene, counting from the start
+// of the scene (the same time as the timecodes of the screenshot tool), to tell when something happens in it.
+static Bool introTimerWanted()
+{
+	static int wanted = -1;
+	if (wanted < 0)
+	{
+		wanted = 0;
+		if (GetEnvironmentVariableA("GENERALS_INTROTIMER", nullptr, 0) > 0)
+			wanted = 1;
+		else
+		{
+			OptionPreferences prefs;
+			OptionPreferences::const_iterator it = prefs.find("IntroTimer");
+			if (it != prefs.end() && stricmp(it->second.str(), "yes") == 0)
+				wanted = 1;
+		}
+	}
+	return wanted == 1;
 }
 
 void InGameUI::drawSystemTime(Int &x, Int &y)

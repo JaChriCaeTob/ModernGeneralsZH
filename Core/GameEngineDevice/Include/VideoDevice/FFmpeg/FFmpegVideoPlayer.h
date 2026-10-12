@@ -63,6 +63,10 @@ class FFmpegVideoStream : public VideoStream
 		Char			*m_memFile;				///< Pointer to memory resident file
 		UnsignedInt64	m_startTime = 0;		///< Time the stream started
 		UnsignedByte *	m_audioBuffer = nullptr;///< Audio buffer for the stream
+		void *			m_videoAudio = nullptr;	///< sound of the movie (MiniMiles video audio, builds without OpenAL)
+		struct SwrContext *m_swr = nullptr;		///< converts the decoded sound to 16 bit interleaved
+		Bool			m_audioFailed = false;
+		void pushAudio(AVFrame *frame);
 
 		FFmpegVideoStream(FFmpegFile* file);																///< only BinkVideoPlayer can create these
 		virtual ~FFmpegVideoStream();

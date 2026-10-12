@@ -291,6 +291,14 @@ names (`GFX_*`) so the backend can be swapped. `gfx_null.cpp` is an in-memory ba
 - stencil, render-to-texture, back buffer read-back (heat haze, shockwave)
 - a half-pixel offset so Direct3D pixel centres line up with Vulkan
 
+### Video sound
+
+The video player had sound code only for OpenAL builds; this build uses the miniaudio based Miles replacement, so the soundtrack of every movie was dropped. `FFmpegVideoStream::pushAudio` now converts the decoded sound to 16 bit interleaved with libswresample and hands it to `MiniMiles_VideoAudio*` (`Dependencies/Miles/MiniMilesVideo.h`), which plays it as a sound of the same audio engine through a ring buffer. The volume is the voice volume of the game, but never below 60%.
+
+### Intro timer
+
+`IntroTimer = yes` in `Options.ini` (or the environment variable `GENERALS_INTROTIMER`) shows the game clock in the main menu scene too. It counts logic frames since the start of the scene, the same time as the timecodes of the screenshot tool.
+
 ### Frames in flight
 
 The renderer keeps two frames in flight: while the GPU draws one frame the CPU already records the next one (two command buffers, fences and ring-buffer halves, three swapchain images; resources of a finished frame are freed one frame later, and every command buffer starts with a global memory barrier so the frames cannot trample each other's images). On the test machine this took the intro scene from about 10 ms to about 6.6 ms per frame. `gfx_vulkan.log` gets a `timing:` line every 600 frames with the frame time and how long the CPU waited for the GPU.

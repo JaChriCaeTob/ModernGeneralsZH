@@ -1095,3 +1095,129 @@ void __stdcall AIL_quick_set_volume(HAUDIO a, F32 volume, F32 extravol)
 void __stdcall AIL_quick_unload(HAUDIO a) { Voice* v = (Voice*)a; if (v) destroyVoice(v); }
 
 } // extern "C"
+
+// ------------------------------------------------------------------------------------------------
+// Sound of movies (not Miles API): a ring buffer that the video player fills, played as a sound of the engine
+// ------------------------------------------------------------------------------------------------
+#include "MiniMilesVideo.h"
+
+namespace
+{
+struct VideoAudio
+{
+	ma_data_source_base base;	// first member: the engine passes this pointer around
+	ma_pcm_rb rb;
+	ma_uint32 channels;
+	ma_uint32 sampleRate;
+	ma_sound sound;
+	bool soundReady;
+};
+
+ma_result videoAudioRead(ma_data_source* ds, void* out, ma_uint64 frameCount, ma_uint64* framesRead)
+{
+	VideoAudio* v = (VideoAudio*)ds;
+	const ma_uint32 bytesPerFrame = v->channels * 2;
+	char* dst = (char*)out;
+	ma_uint64 got = 0;
+	while (got < frameCount)
+	{
+		ma_uint32 n = (ma_uint32)(frameCount - got);
+		void* p = nullptr;
+		if (ma_pcm_rb_acquire_read(&v->rb, &n, &p) != MA_SUCCESS || n == 0)
+			break;
+		memcpy(dst + got * bytesPerFrame, p, (size_t)n * bytesPerFrame);
+		ma_pcm_rb_commit_read(&v->rb, n);
+		got += n;
+	}
+	if (got < frameCount)
+		memset(dst + got * bytesPerFrame, 0, (size_t)(frameCount - got) * bytesPerFrame);		// nothing decoded yet: silence, the sound never ends
+	*framesRead = frameCount;
+	return MA_SUCCESS;
+}
+
+ma_result videoAudioSeek(ma_data_source*, ma_uint64) { return MA_NOT_IMPLEMENTED; }
+
+ma_result videoAudioFormat(ma_data_source* ds, ma_format* f, ma_uint32* c, ma_uint32* r, ma_channel* map, size_t mapCap)
+{
+	VideoAudio* v = (VideoAudio*)ds;
+	*f = ma_format_s16; *c = v->channels; *r = v->sampleRate;
+	if (map && mapCap > 0)
+		ma_channel_map_init_standard(ma_standard_channel_map_default, map, mapCap, v->channels);
+	return MA_SUCCESS;
+}
+
+ma_result videoAudioCursor(ma_data_source*, ma_uint64*) { return MA_NOT_IMPLEMENTED; }
+ma_result videoAudioLength(ma_data_source*, ma_uint64*) { return MA_NOT_IMPLEMENTED; }
+
+ma_data_source_vtable g_videoAudioVtable = { videoAudioRead, videoAudioSeek, videoAudioFormat, videoAudioCursor, videoAudioLength, nullptr, 0 };
+}
+
+void* MiniMiles_VideoAudioOpen(unsigned channels, unsigned sampleRate)
+{
+	if (!g_engineReady || channels < 1 || channels > 2 || sampleRate < 8000)
+		return nullptr;
+	VideoAudio* v = new VideoAudio();
+	memset(&v->sound, 0, sizeof(v->sound));
+	v->channels = channels; v->sampleRate = sampleRate; v->soundReady = false;
+	if (ma_pcm_rb_init(ma_format_s16, channels, sampleRate * 4, nullptr, nullptr, &v->rb) != MA_SUCCESS)
+	{
+		delete v;
+		return nullptr;
+	}
+	ma_data_source_config dsc = ma_data_source_config_init();
+	dsc.vtable = &g_videoAudioVtable;
+	if (ma_data_source_init(&dsc, &v->base) != MA_SUCCESS)
+	{
+		ma_pcm_rb_uninit(&v->rb);
+		delete v;
+		return nullptr;
+	}
+	if (ma_sound_init_from_data_source(&g_engine, &v->base, MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, &v->sound) != MA_SUCCESS)
+	{
+		ma_data_source_uninit(&v->base);
+		ma_pcm_rb_uninit(&v->rb);
+		delete v;
+		return nullptr;
+	}
+	v->soundReady = true;
+	ma_sound_start(&v->sound);
+	return v;
+}
+
+void MiniMiles_VideoAudioWrite(void* handle, const short* interleaved, unsigned frames)
+{
+	VideoAudio* v = (VideoAudio*)handle;
+	if (!v)
+		return;
+	const ma_uint32 bytesPerFrame = v->channels * 2;
+	unsigned done = 0;
+	while (done < frames)
+	{
+		ma_uint32 n = frames - done;
+		void* p = nullptr;
+		if (ma_pcm_rb_acquire_write(&v->rb, &n, &p) != MA_SUCCESS || n == 0)
+			break;		// full: the rest is dropped
+		memcpy(p, (const char*)interleaved + (size_t)done * bytesPerFrame, (size_t)n * bytesPerFrame);
+		ma_pcm_rb_commit_write(&v->rb, n);
+		done += n;
+	}
+}
+
+void MiniMiles_VideoAudioSetVolume(void* handle, float volume)
+{
+	VideoAudio* v = (VideoAudio*)handle;
+	if (v && v->soundReady)
+		ma_sound_set_volume(&v->sound, volume < 0.0f ? 0.0f : volume);
+}
+
+void MiniMiles_VideoAudioClose(void* handle)
+{
+	VideoAudio* v = (VideoAudio*)handle;
+	if (!v)
+		return;
+	if (v->soundReady)
+		ma_sound_uninit(&v->sound);
+	ma_data_source_uninit(&v->base);
+	ma_pcm_rb_uninit(&v->rb);
+	delete v;
+}
