@@ -21,7 +21,7 @@ bool CreateShadowTargets()
 {
 	g_sh.mapSize = g_cfg.shadowQuality >= 2 ? 4096 : 2048;
 	g_sh.map = NewTarget(g_sh.mapSize, g_sh.mapSize, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
-	g_sh.vis = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R8_UNORM, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+	g_sh.vis = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_R16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 	g_sh.lmap = NewTarget(2048, 2048, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 	if (g_sh.map) g_sh.map->isDepth = true;
 	if (g_sh.lmap) g_sh.lmap->isDepth = true;

@@ -109,8 +109,8 @@ bool CreatePostTargets()
 	B.depthCopy = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);		// same format as the scene depth: a copy needs compatible formats
 	if (B.depthCopy) B.depthCopy->isDepth = true;
 	const uint32_t aw = g_cfg.aoHalfResolution ? (B.extent.width + 1) / 2 : B.extent.width, ah = g_cfg.aoHalfResolution ? (B.extent.height + 1) / 2 : B.extent.height;
-	B.ao[0] = NewTarget(aw, ah, VK_FORMAT_R8_UNORM, sampled);
-	B.ao[1] = NewTarget(aw, ah, VK_FORMAT_R8_UNORM, sampled);
+	B.ao[0] = NewTarget(aw, ah, VK_FORMAT_R16_SFLOAT, sampled);		// 16 bit: an 8 bit factor steps visibly across large smooth areas
+	B.ao[1] = NewTarget(aw, ah, VK_FORMAT_R16_SFLOAT, sampled);
 	// a view of the depth buffer for sampling; it is not owned by this wrapper
 	B.depthTex = new GpuTexture();
 	B.depthTex->image = B.depthImage; B.depthTex->width = B.extent.width; B.depthTex->height = B.extent.height; B.depthTex->isDepth = true;
@@ -445,6 +445,8 @@ bool RunPostProcess()
 	ub.p0[0] = g_postCfg.bloomThreshold; ub.p0[1] = g_postCfg.bloomKnee; ub.p0[2] = g_postCfg.bloomIntensity;
 	ub.p1[0] = g_postCfg.saturation; ub.p1[1] = g_postCfg.contrast;
 	ub.p2[0] = g_postCfg.fxaa ? 1.0f : 0.0f; ub.p2[1] = has3D ? 1.0f : 0.0f;
+	static const bool aoDebug = getenv("GENERALS_AODEBUG") != nullptr;		// development: the output is the ambient occlusion image alone, stretched
+	ub.p2[2] = aoDebug ? 1.0f : 0.0f;
 
 	GpuTexture* none[4] = { nullptr, nullptr, nullptr, nullptr };
 	bool haveAo = false;

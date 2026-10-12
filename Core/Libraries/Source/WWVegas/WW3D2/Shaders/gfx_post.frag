@@ -38,14 +38,37 @@ layout(location = 0) out vec4 outColor;
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
+// white noise from an integer hash (PCG): no lattice, so nothing survives the blur as a pattern
+uvec2 pcg2d(uvec2 v)
+{
+	v = v * 1664525u + 1013904223u;
+	v.x += v.y * 1664525u; v.y += v.x * 1664525u;
+	v ^= v >> 16u;
+	v.x += v.y * 1664525u; v.y += v.x * 1664525u;
+	v ^= v >> 16u;
+	return v;
+}
+float hashNoise(vec2 p) { return float(pcg2d(uvec2(p)).x) * (1.0 / 4294967296.0); }
+
+// one level of triangular noise before the 8 bit output: smooth gradients (shadows, occlusion on large flat ground) otherwise step in visible bands
+vec3 dither(vec3 c)
+{
+	float n = hashNoise(gl_FragCoord.xy) + hashNoise(gl_FragCoord.xy + vec2(173.0, 91.0)) - 1.0;
+	return c + vec3(n) * (1.0 / 255.0);
+}
+
 #if defined(PASS_AO) || defined(PASS_AOBLUR) || defined(PASS_SHADOW) || defined(PASS_CLOUDS) || defined(PASS_LIGHTS)
 
 // view space depth of a depth buffer value; the sign of the projection's [2][3] element is in p2.w
 float viewZ(float d) { return u.proj.w / (u.p2.w * d - u.proj.z); }
 
+// depth at the pixel that contains uv p. texelFetch with a small bias instead of a nearest sampler: with the half resolution ambient occlusion the sample
+// points lie exactly on pixel borders, and rounding noise decided between the pixel above and below (whole rows came out wrong: horizontal stripes)
+float depthAt(sampler2D s, vec2 p) { return texelFetch(s, clamp(ivec2(floor(p * u.texel.zw + 0.25)), ivec2(0), ivec2(u.texel.zw) - 1), 0).r; }
+
 vec3 viewPos(vec2 p)
 {
-	float z = viewZ(texture(t0, p).r);
+	float z = viewZ(depthAt(t0, p));
 	vec2 pix = p * u.texel.zw;
 	vec2 ndc = vec2((pix.x - u.viewRect.x) / u.viewRect.z * 2.0 - 1.0, 1.0 - (pix.y - u.viewRect.y) / u.viewRect.w * 2.0);
 	return vec3(ndc.x * u.p2.w * z / u.proj.x, ndc.y * u.p2.w * z / u.proj.y, z);
@@ -309,18 +332,6 @@ void main()
 
 #elif defined(PASS_AO)
 
-// white noise from an integer hash (PCG): no lattice, so nothing survives the blur as a pattern
-uvec2 pcg2d(uvec2 v)
-{
-	v = v * 1664525u + 1013904223u;
-	v.x += v.y * 1664525u; v.y += v.x * 1664525u;
-	v ^= v >> 16u;
-	v.x += v.y * 1664525u; v.y += v.x * 1664525u;
-	v ^= v >> 16u;
-	return v;
-}
-float hashNoise(vec2 p) { return float(pcg2d(uvec2(p)).x) * (1.0 / 4294967296.0); }
-
 void main()
 {
 	float d = texture(t0, uv).r;
@@ -361,13 +372,13 @@ void main()
 // depth aware blur along the direction in p2.xy (in uv units per tap), depth buffer in t1
 void main()
 {
-	float zc = abs(viewZ(texture(t1, uv).r));
+	float zc = abs(viewZ(depthAt(t1, uv)));
 	float sum = texture(t0, uv).r, wsum = 1.0;
 	for (int k = -4; k <= 4; ++k)
 	{
 		if (k == 0) continue;
 		vec2 p = uv + u.p2.xy * float(k);
-		float z = abs(viewZ(texture(t1, p).r));
+		float z = abs(viewZ(depthAt(t1, p)));
 		float w = (1.0 - abs(float(k)) / 5.0) * exp(-abs(z - zc) / max(zc, 1.0) * 120.0);
 		sum += texture(t0, p).r * w;
 		wsum += w;
@@ -445,6 +456,7 @@ void main()
 {
 	vec3 c = texture(t0, uv).rgb;
 	if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0);
+	if (u.p2.z > 0.5 && u.p2.y > 0.5 && u.p1.z > 0.0) { outColor = vec4(vec3(0.85 + (texture(t2, uv).r - 1.0) * 14.0), 1.0); return; }		// debug view of the ambient occlusion
 	if (u.p2.y > 0.5)
 	{
 		if (u.p1.z > 0.0)
@@ -459,14 +471,14 @@ void main()
 		c = mix(vec3(l), c, u.p1.x);
 		c = (c - 0.5) * u.p1.y + 0.5;
 	}
-	outColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+	outColor = vec4(clamp(dither(c), 0.0, 1.0), 1.0);
 }
 
 #elif defined(PASS_FXAA)
 
 void main()
 {
-	if (u.p2.x < 0.5) { outColor = vec4(texture(t0, uv).rgb, 1.0); return; }
+	if (u.p2.x < 0.5) { outColor = vec4(texture(t0, uv).rgb, 1.0); return; }		// FXAA off: the composite pass already dithered
 	vec2 px = u.texel.xy;
 	vec3 rgbNW = texture(t0, uv + vec2(-1.0, -1.0) * px).rgb;
 	vec3 rgbNE = texture(t0, uv + vec2( 1.0, -1.0) * px).rgb;
@@ -485,7 +497,7 @@ void main()
 	vec3 rgbA = 0.5 * (texture(t0, uv + dir * (1.0 / 3.0 - 0.5)).rgb + texture(t0, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
 	vec3 rgbB = rgbA * 0.5 + 0.25 * (texture(t0, uv + dir * -0.5).rgb + texture(t0, uv + dir * 0.5).rgb);
 	float lB = luma(rgbB);
-	outColor = vec4((lB < lMin || lB > lMax) ? rgbA : rgbB, 1.0);
+	outColor = vec4(clamp(dither((lB < lMin || lB > lMax) ? rgbA : rgbB), 0.0, 1.0), 1.0);
 }
 
 #endif

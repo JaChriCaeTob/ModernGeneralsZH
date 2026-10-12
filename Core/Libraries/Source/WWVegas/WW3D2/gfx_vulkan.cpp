@@ -918,17 +918,45 @@ bool LoadVulkan()
 	return vkCreateInstance != nullptr;
 }
 
+// Validation (development): GENERALS_VALIDATION=1 turns on the Khronos validation layer (VK_LAYER_PATH has to point at it) and writes its warnings and errors to the log.
+static VKAPI_ATTR VkBool32 VKAPI_CALL ValidationCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* d, void*)
+{
+	static int n = 0;
+	if (n++ < 300)
+		Log("VALIDATION %s [%s] %.700s", (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "ERROR" : "warning", d->pMessageIdName ? d->pMessageIdName : "", d->pMessage ? d->pMessage : "");
+	return VK_FALSE;
+}
+
 bool CreateInstanceAndDevice(HWND window)
 {
 	B.window = window;
-	const char* instExt[] = { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME };
+	const bool validation = getenv("GENERALS_VALIDATION") != nullptr;
+	const char* instExt[] = { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME, VK_EXT_DEBUG_UTILS_EXTENSION_NAME };
+	const char* layers[] = { "VK_LAYER_KHRONOS_validation" };
 	VkApplicationInfo app{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
 	app.pApplicationName = "Generals Zero Hour"; app.apiVersion = VK_API_VERSION_1_3;
 	VkInstanceCreateInfo ici{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	ici.pApplicationInfo = &app; ici.enabledExtensionCount = 2; ici.ppEnabledExtensionNames = instExt;
-	if (vkCreateInstance(&ici, nullptr, &B.instance) != VK_SUCCESS) { Log("vkCreateInstance failed"); return false; }
+	bool validating = false;
+	if (validation)
+	{
+		ici.enabledExtensionCount = 3; ici.enabledLayerCount = 1; ici.ppEnabledLayerNames = layers;
+		validating = vkCreateInstance(&ici, nullptr, &B.instance) == VK_SUCCESS;
+		if (!validating) { Log("validation layer not available (set VK_LAYER_PATH): continuing without it"); ici.enabledExtensionCount = 2; ici.enabledLayerCount = 0; ici.ppEnabledLayerNames = nullptr; }
+	}
+	if (!validating && vkCreateInstance(&ici, nullptr, &B.instance) != VK_SUCCESS) { Log("vkCreateInstance failed"); return false; }
 #define VKFN_LOAD_INSTANCE(n) n = (PFN_##n)vkGetInstanceProcAddr(B.instance, #n);
 	VKFN_INSTANCE(VKFN_LOAD_INSTANCE)
+	if (validating)
+	{
+		auto create = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(B.instance, "vkCreateDebugUtilsMessengerEXT");
+		VkDebugUtilsMessengerCreateInfoEXT mi{ VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
+		mi.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+		mi.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+		mi.pfnUserCallback = ValidationCallback;
+		VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
+		if (create && create(B.instance, &mi, nullptr, &messenger) == VK_SUCCESS) Log("Vulkan validation layer active");
+	}
 
 	VkWin32SurfaceCreateInfoKHR sci{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
 	sci.hinstance = GetModuleHandle(nullptr); sci.hwnd = window;
@@ -1787,7 +1815,8 @@ private:
 			&& m_renderStates[D3DRS_ALPHABLENDENABLE] && !m_renderStates[D3DRS_ZWRITEENABLE] && m_renderStates[D3DRS_ZENABLE];
 		const bool particleDraw = g_softDraw && B.postOn && B.stage == 0 && !B.curTarget && !pretransformed && B.depthTex
 			&& m_renderStates[D3DRS_ALPHABLENDENABLE] && !m_renderStates[D3DRS_ZWRITEENABLE] && m_renderStates[D3DRS_ZENABLE];
-		if (particleDraw && !B.lightingApplied && B.scene3D && B.projCaptured && (B.rendering || B.depthLoaded))
+		static const bool aoDebugView = getenv("GENERALS_AODEBUG") != nullptr;
+		if (particleDraw && !B.lightingApplied && !aoDebugView && B.scene3D && B.projCaptured && (B.rendering || B.depthLoaded))
 			ApplyLightingMidFrame();
 		if (softWanted && !B.depthCopyDone && (B.rendering || B.depthLoaded))
 			MakeDepthCopy();
