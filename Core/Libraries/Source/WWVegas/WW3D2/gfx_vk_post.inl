@@ -106,7 +106,7 @@ bool CreatePostTargets()
 		w = std::max(1u, w / 2); h = std::max(1u, h / 2);
 		B.bloom[i] = NewTarget(w, h, VK_FORMAT_R16G16B16A16_SFLOAT, sampled);
 	}
-	B.depthCopy = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);		// same format as the scene depth: a copy needs compatible formats
+	B.depthCopy = NewTarget(B.extent.width, B.extent.height, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);		// same format as the scene depth: a copy needs compatible formats
 	if (B.depthCopy) B.depthCopy->isDepth = true;
 	const uint32_t aw = g_cfg.aoHalfResolution ? (B.extent.width + 1) / 2 : B.extent.width, ah = g_cfg.aoHalfResolution ? (B.extent.height + 1) / 2 : B.extent.height;
 	B.ao[0] = NewTarget(aw, ah, VK_FORMAT_R16_SFLOAT, sampled);		// 16 bit: an 8 bit factor steps visibly across large smooth areas

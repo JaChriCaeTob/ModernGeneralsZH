@@ -922,6 +922,8 @@ bool LoadVulkan()
 static VKAPI_ATTR VkBool32 VKAPI_CALL ValidationCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* d, void*)
 {
 	static int n = 0;
+	if (d->pMessageIdName && strstr(d->pMessageIdName, "ShaderOutputNotConsumed"))
+		return VK_FALSE;		// depth-only shadow draws run the same fragment shader: harmless
 	if (n++ < 300)
 		Log("VALIDATION %s [%s] %.700s", (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "ERROR" : "warning", d->pMessageIdName ? d->pMessageIdName : "", d->pMessage ? d->pMessage : "");
 	return VK_FALSE;
@@ -998,6 +1000,7 @@ bool CreateInstanceAndDevice(HWND window)
 	qci.queueFamilyIndex = B.family; qci.queueCount = 1; qci.pQueuePriorities = &prio;
 	VkPhysicalDeviceVulkan13Features f13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
 	f13.dynamicRendering = VK_TRUE; f13.synchronization2 = VK_TRUE;
+	f13.shaderDemoteToHelperInvocation = VK_TRUE;		// the shaders' discard compiles to demote; a feature every Vulkan 1.3 device has (found by the validation layer)
 	VkPhysicalDeviceFeatures2 f2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	f2.pNext = &f13; f2.features.samplerAnisotropy = B.features.samplerAnisotropy; f2.features.textureCompressionBC = B.features.textureCompressionBC; f2.features.largePoints = B.features.largePoints;
 	const char* devExt[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME };
