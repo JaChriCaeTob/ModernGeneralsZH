@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Builds a patched Window/Menus/OptionsMenu.wnd with a "graphics enhancements" group (a header and twelve check boxes in four columns) in the advanced
-display pane. The original file is read from the game's WindowZH.big; the result is written as a loose file into the game folder
+display pane. The original file is read from the game's WindowZH.big (Zero Hour) or Window.big (Generals); the result is written as a loose file into the game folder
 (loose files win over archives), so no original data is modified or redistributed.
 
   patch_options_wnd.py <GameDir>
@@ -11,7 +11,10 @@ NL = chr(10)
 here = os.path.dirname(os.path.abspath(__file__))
 game = sys.argv[1]
 tmp = tempfile.mkdtemp()
-subprocess.check_call([sys.executable, os.path.join(here, 'bigtool.py'), 'extract', os.path.join(game, 'WindowZH.big'), tmp, 'optionsmenu.wnd'], stdout=subprocess.DEVNULL)
+archive = os.path.join(game, 'WindowZH.big')
+if not os.path.exists(archive):
+    archive = os.path.join(game, 'Window.big')
+subprocess.check_call([sys.executable, os.path.join(here, 'bigtool.py'), 'extract', archive, tmp, 'optionsmenu.wnd'], stdout=subprocess.DEVNULL)
 src = None
 for root, _, files in os.walk(tmp):
     for f in files:

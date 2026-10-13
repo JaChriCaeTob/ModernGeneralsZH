@@ -632,7 +632,10 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_useTreeSway=lodInfo->m_useTreeSway;
 		TheWritableGlobalData->m_useDrawModuleLOD=!lodInfo->m_useBuildupScaffolds;
 		TheWritableGlobalData->m_enableDynamicLOD = lodInfo->m_enableDynamicLOD;
-		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
+		{
+			OptionPreferences optionPref;
+			TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit && !optionPref.isFPSLimitDisabledByUser();
+		}
 		TheWritableGlobalData->m_useTrees = requestedTrees;
 
 		if (!m_memPassed || isReallyLowMHz()) {

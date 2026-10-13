@@ -37,6 +37,7 @@
 #include "WW3D2/camera.h"
 #include "WW3D2/light.h"
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/gfx_vulkan.h"
 #include "WW3D2/hlod.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
@@ -1330,7 +1331,9 @@ Int W3DProjectedShadowManager::renderShadows(RenderInfoClass & rinfo)
 	nShadowDecalVertsInBuf = 0xffff;
 	nShadowDecalIndicesInBuf = 0xffff;
 
-	if (TheGlobalData->m_useShadowDecals)
+	// The native Vulkan renderer draws object shadows from its shadow map: only the object shadows are skipped here, the decals
+	// (range circles of superweapons, the radar scan, ...) are not shadows and still have to be drawn.
+	if (TheGlobalData->m_useShadowDecals && !VkGfx_ShadowMapsActive())
 	{
 		// Render the object
 		TheDX8MeshRenderer.Set_Camera(&rinfo.Camera);

@@ -37,6 +37,7 @@
 #include "WW3D2/camera.h"
 #include "WW3D2/light.h"
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/gfx_vulkan.h"
 #include "WW3D2/hlod.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
@@ -91,7 +92,11 @@ void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
 			//This function gets called many times by the W3D renderer
 			//so we use this flag to make sure shadows rendered only once per frame.
 			if (TheW3DShadowManager->isShadowScene())
+			{
+				VkGfx_SuppressSceneDraws(VkGfx_ShadowMapsActive());
 				TheW3DVolumetricShadowManager->renderShadows(projectionCount);
+				VkGfx_SuppressSceneDraws(false);
+			}
 	}
 	if (TheW3DShadowManager && stencilPass)	//reset so no more shadow processing this frame.
 		TheW3DShadowManager->queueShadows(FALSE);

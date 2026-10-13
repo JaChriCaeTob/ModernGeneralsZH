@@ -48,6 +48,8 @@
 #include "GameClient/LookAtXlat.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Gadget.h"
+#include "WW3D2/gfx_vulkan.h"
+#include "GameClient/Shockwave.h"
 #include "GameClient/GadgetCheckBox.h"
 #include "GameClient/GadgetStaticText.h"
 #include "GameClient/GadgetTextEntry.h"
@@ -155,6 +157,36 @@ static GameWindow *   sliderTextureResolution = nullptr;
 
 static NameKeyType    sliderParticleCapID = NAMEKEY_INVALID;
 static GameWindow *   sliderParticleCap = nullptr;
+
+// extra check boxes of the native Vulkan renderer (added to the advanced pane by tools/patch_options_wnd.py)
+static GameWindow *   checkSoftShadows      = nullptr;
+static GameWindow *   checkUpdatedWater     = nullptr;
+static GameWindow *   checkShockwaves       = nullptr;
+static GameWindow *   checkAmbientOcclusion = nullptr;
+static GameWindow *   checkBloom            = nullptr;
+static GameWindow *   checkFXAA             = nullptr;
+
+static Bool optionFlag(OptionPreferences *p, const char *key, Bool def)
+{
+	OptionPreferences::const_iterator it = p->find(key);
+	return it == p->end() ? def : (stricmp(it->second.str(), "no") != 0 && strcmp(it->second.str(), "0") != 0);
+}
+
+// further check boxes of the native renderer: explosion light, unit highlights, texture sharpness, visible clouds, cloud shadows
+struct NativeOption { const char *window; const char *key; const wchar_t *label; Bool def; GameWindow *win; };
+static NativeOption g_nativeOptions[] =
+{
+	{ "OptionsMenu.wnd:CheckDynLights",   "DynamicLights",        L"Explosion light", TRUE,  nullptr },
+	{ "OptionsMenu.wnd:CheckPixelLight",  "PixelLighting",        L"Unit highlights", TRUE,  nullptr },
+	{ "OptionsMenu.wnd:CheckAniso",       "AnisotropicFiltering", L"Sharp textures", TRUE,  nullptr },
+	{ "OptionsMenu.wnd:CheckVkClouds",    "Clouds",               L"Clouds",         FALSE, nullptr },
+	{ "OptionsMenu.wnd:CheckVkCloudShadows", "CloudShadows",      L"Cloud shadows",  TRUE,  nullptr },
+};
+
+static void applyNativeGraphics(Bool soft, Bool ao, Bool bloom, Bool fxaa)
+{
+	VkGfx_SetEffectToggles(soft, ao, bloom, fxaa);
+}
 
 static NameKeyType    check3DShadowsID = NAMEKEY_INVALID;
 static GameWindow *   check3DShadows   = nullptr;
@@ -353,6 +385,38 @@ static void setDefaults()
 
 static void saveOptions()
 {
+	if (checkUpdatedWater)
+		(*pref)["UpdatedWater"] = GadgetCheckBoxIsChecked( checkUpdatedWater ) ? "yes" : "no";		// read when the water is created: takes effect after a restart
+	if (checkShockwaves)
+	{
+		const Bool on = GadgetCheckBoxIsChecked( checkShockwaves );
+		(*pref)["Shockwaves"] = on ? "yes" : "no";
+		ShockwaveList::instance().setEnabled( on );
+	}
+	if (VkGfx_NativeActive() && checkAmbientOcclusion && checkBloom && checkFXAA && checkSoftShadows)
+	{
+		const Bool soft = GadgetCheckBoxIsChecked( checkSoftShadows );
+		const Bool ao = GadgetCheckBoxIsChecked( checkAmbientOcclusion );
+		const Bool bloom = GadgetCheckBoxIsChecked( checkBloom );
+		const Bool fxaa = GadgetCheckBoxIsChecked( checkFXAA );
+		(*pref)["SoftShadows"] = soft ? "yes" : "no";
+		(*pref)["AmbientOcclusion"] = ao ? "yes" : "no";
+		(*pref)["Bloom"] = bloom ? "yes" : "no";
+		(*pref)["AntiAliasingFXAA"] = fxaa ? "yes" : "no";
+		applyNativeGraphics( soft, ao, bloom, fxaa );
+	}
+	if (VkGfx_NativeActive())
+	{
+		Bool on[5] = {};
+		for (int i = 0; i < 5; ++i)
+		{
+			if (!g_nativeOptions[i].win) continue;
+			on[i] = GadgetCheckBoxIsChecked( g_nativeOptions[i].win );
+			(*pref)[g_nativeOptions[i].key] = i == 2 ? (on[i] ? "16" : "0") : (on[i] ? "yes" : "no");
+		}
+		VkGfx_SetMoreEffectToggles( on[0], on[1], on[2], on[3], on[4] );
+	}
+
 	Int index;
 	Int val;
 	//-------------------------------------------------------------------------------------------------
@@ -465,7 +529,7 @@ static void saveOptions()
 		GadgetComboBoxGetSelectedPos(comboBoxLANIP, &index);
 		if (index>=0 && TheGlobalData)
 		{
-			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxLANIP, index);
+			ip = (UnsignedInt)(uintptr_t)GadgetComboBoxGetItemData(comboBoxLANIP, index);
 			TheWritableGlobalData->m_defaultIP = ip;
 			pref->setLANIPAddress(ip);
 		}
@@ -477,7 +541,7 @@ static void saveOptions()
 		GadgetComboBoxGetSelectedPos(comboBoxOnlineIP, &index);
 		if (index>=0)
 		{
-			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
+			ip = (UnsignedInt)(uintptr_t)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
 			pref->setOnlineIPAddress(ip);
 		}
 	}
@@ -1024,7 +1088,44 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	sliderParticleCapID = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ParticleCapSlider" );
   sliderParticleCap = TheWindowManager->winGetWindowFromId( nullptr, sliderParticleCapID );
 
+	{
+		auto find = [](const char *n) { return TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( n ) ); };
+		checkSoftShadows      = find( "OptionsMenu.wnd:CheckSoftShadows" );
+		checkAmbientOcclusion = find( "OptionsMenu.wnd:CheckAmbientOcclusion" );
+		checkBloom            = find( "OptionsMenu.wnd:CheckBloom" );
+		checkFXAA             = find( "OptionsMenu.wnd:CheckFXAA" );
+		checkUpdatedWater     = find( "OptionsMenu.wnd:CheckUpdatedWater" );
+		checkShockwaves       = find( "OptionsMenu.wnd:CheckShockwaves" );
+		for (NativeOption &o : g_nativeOptions)
+			o.win = find( o.window );
+		GameWindow *header    = find( "OptionsMenu.wnd:EnhancementsHeader" );
+		const Bool native = VkGfx_NativeActive();
+		if (header)
+			GadgetStaticTextSetText( header, UnicodeString( native ? L"Graphics enhancements   (* applies after a restart)" : L"Graphics enhancements (switch GraphicsMode in Options.ini for the rest)" ) );
+		if (checkSoftShadows)      { GadgetCheckBoxSetText( checkSoftShadows, UnicodeString( L"Soft shadows" ) ); GadgetCheckBoxSetChecked( checkSoftShadows, optionFlag( pref, "SoftShadows", TRUE ) ); checkSoftShadows->winEnable( native ); }
+		if (checkAmbientOcclusion) { GadgetCheckBoxSetText( checkAmbientOcclusion, UnicodeString( L"Ambient occl." ) ); GadgetCheckBoxSetChecked( checkAmbientOcclusion, optionFlag( pref, "AmbientOcclusion", TRUE ) ); checkAmbientOcclusion->winEnable( native ); }
+		if (checkBloom)            { GadgetCheckBoxSetText( checkBloom, UnicodeString( L"Bloom (glow)" ) ); GadgetCheckBoxSetChecked( checkBloom, optionFlag( pref, "Bloom", TRUE ) ); checkBloom->winEnable( native ); }
+		if (checkFXAA)             { GadgetCheckBoxSetText( checkFXAA, UnicodeString( L"Anti-aliasing" ) ); GadgetCheckBoxSetChecked( checkFXAA, optionFlag( pref, "AntiAliasingFXAA", TRUE ) ); checkFXAA->winEnable( native ); }
+		if (checkUpdatedWater)     { GadgetCheckBoxSetText( checkUpdatedWater, UnicodeString( L"New water *" ) ); GadgetCheckBoxSetChecked( checkUpdatedWater, optionFlag( pref, "UpdatedWater", TRUE ) ); }
+		if (checkShockwaves)       { GadgetCheckBoxSetText( checkShockwaves, UnicodeString( L"Shockwaves" ) ); GadgetCheckBoxSetChecked( checkShockwaves, optionFlag( pref, "Shockwaves", TRUE ) ); }
+		for (NativeOption &o : g_nativeOptions)
+			if (o.win)
+			{
+				GadgetCheckBoxSetText( o.win, UnicodeString( o.label ) );
+				GadgetCheckBoxSetChecked( o.win, optionFlag( pref, o.key, o.def ) );
+				o.win->winEnable( native );
+			}
+		if (native)
+		{
+			// the engine's own stencil and decal shadows are not used by the native renderer
+			if (check3DShadows) check3DShadows->winHide( TRUE );
+			if (check2DShadows) check2DShadows->winHide( TRUE );
+		}
+	}
+
 	WinAdvancedDisplay->winHide(TRUE);
+	if (getenv( "GENERALS_OPENADV" ))		// debugging: opens the advanced pane right away
+		showAdvancedOptions();
 
 	Color color =  GameMakeColor(255,255,255,255);
 
@@ -1045,7 +1146,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		count++;
 		str.translate(IPlist->getIPstring());
 		index = GadgetComboBoxAddEntry(comboBoxLANIP, str, color);
-		GadgetComboBoxSetItemData(comboBoxLANIP, index, (void *)(IPlist->getIP()));
+		GadgetComboBoxSetItemData(comboBoxLANIP, index, (void *)(uintptr_t)(IPlist->getIP()));
 		if (selectedIP == IPlist->getIP())
 		{
 			selectedIndex = index;
@@ -1081,7 +1182,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 			count++;
 			str.translate(IPlist->getIPstring());
 			index = GadgetComboBoxAddEntry(comboBoxOnlineIP, str, color);
-			GadgetComboBoxSetItemData(comboBoxOnlineIP, index, (void *)(IPlist->getIP()));
+			GadgetComboBoxSetItemData(comboBoxOnlineIP, index, (void *)(uintptr_t)(IPlist->getIP()));
 			if (selectedIP == IPlist->getIP())
 			{
 				selectedIndex = index;
