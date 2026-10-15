@@ -157,40 +157,49 @@ public:
 	std::vector<NullSurface*> m_levels;
 };
 
+// Lets the Vulkan backend keep a copy of a static buffer on the GPU instead of copying its data again for every draw.
+inline void (*g_gpuBufferRelease)(void*) = nullptr;
+
 class NullVertexBuffer : public IDirect3DVertexBuffer8NullBase
 {
 public:
+	~NullVertexBuffer() { if (m_gpu && g_gpuBufferRelease) g_gpuBufferRelease(m_gpu); }
 	NullVertexBuffer(UINT length, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DDevice8* device)
 		: m_length(length), m_usage(usage), m_fvf(fvf), m_pool(pool), m_device(device), m_data(length, 0) {}
 	NULLGFX_REFCOUNT
 	STDMETHOD(GetDevice)(THIS_ IDirect3DDevice8** ppDevice) override { if (ppDevice) { *ppDevice = m_device; if (m_device) m_device->AddRef(); } return D3D_OK; }
 	STDMETHOD_(D3DRESOURCETYPE, GetType)(THIS) override { return D3DRTYPE_VERTEXBUFFER; }
-	STDMETHOD(Lock)(THIS_ UINT OffsetToLock, UINT, BYTE** ppbData, DWORD) override { *ppbData = m_data.data() + OffsetToLock; return D3D_OK; }
-	STDMETHOD(Unlock)(THIS) override { return D3D_OK; }
+	STDMETHOD(Lock)(THIS_ UINT OffsetToLock, UINT, BYTE** ppbData, DWORD) override { *ppbData = m_data.data() + OffsetToLock; ++m_version; return D3D_OK; }
+	STDMETHOD(Unlock)(THIS) override { ++m_version; return D3D_OK; }
 	STDMETHOD(GetDesc)(THIS_ D3DVERTEXBUFFER_DESC* pDesc) override
 	{
 		pDesc->Format = D3DFMT_VERTEXDATA; pDesc->Type = D3DRTYPE_VERTEXBUFFER; pDesc->Usage = m_usage; pDesc->Pool = m_pool;
 		pDesc->Size = m_length; pDesc->FVF = m_fvf; return D3D_OK;
 	}
 	UINT m_length; DWORD m_usage, m_fvf; D3DPOOL m_pool; IDirect3DDevice8* m_device; std::vector<BYTE> m_data;
+	uint32_t m_version = 1;							// counts changes of the data
+	void* m_gpu = nullptr; uint32_t m_gpuVersion = 0, m_gpuFrame = 0; bool m_gpuDynamic = false;		// GPU copy kept by the Vulkan backend
 };
 
 class NullIndexBuffer : public IDirect3DIndexBuffer8NullBase
 {
 public:
+	~NullIndexBuffer() { if (m_gpu && g_gpuBufferRelease) g_gpuBufferRelease(m_gpu); }
 	NullIndexBuffer(UINT length, DWORD usage, D3DFORMAT format, D3DPOOL pool, IDirect3DDevice8* device)
 		: m_length(length), m_usage(usage), m_format(format), m_pool(pool), m_device(device), m_data(length, 0) {}
 	NULLGFX_REFCOUNT
 	STDMETHOD(GetDevice)(THIS_ IDirect3DDevice8** ppDevice) override { if (ppDevice) { *ppDevice = m_device; if (m_device) m_device->AddRef(); } return D3D_OK; }
 	STDMETHOD_(D3DRESOURCETYPE, GetType)(THIS) override { return D3DRTYPE_INDEXBUFFER; }
-	STDMETHOD(Lock)(THIS_ UINT OffsetToLock, UINT, BYTE** ppbData, DWORD) override { *ppbData = m_data.data() + OffsetToLock; return D3D_OK; }
-	STDMETHOD(Unlock)(THIS) override { return D3D_OK; }
+	STDMETHOD(Lock)(THIS_ UINT OffsetToLock, UINT, BYTE** ppbData, DWORD) override { *ppbData = m_data.data() + OffsetToLock; ++m_version; return D3D_OK; }
+	STDMETHOD(Unlock)(THIS) override { ++m_version; return D3D_OK; }
 	STDMETHOD(GetDesc)(THIS_ D3DINDEXBUFFER_DESC* pDesc) override
 	{
 		pDesc->Format = m_format; pDesc->Type = D3DRTYPE_INDEXBUFFER; pDesc->Usage = m_usage; pDesc->Pool = m_pool; pDesc->Size = m_length;
 		return D3D_OK;
 	}
 	UINT m_length; DWORD m_usage; D3DFORMAT m_format; D3DPOOL m_pool; IDirect3DDevice8* m_device; std::vector<BYTE> m_data;
+	uint32_t m_version = 1;
+	void* m_gpu = nullptr; uint32_t m_gpuVersion = 0, m_gpuFrame = 0; bool m_gpuDynamic = false;
 };
 
 // ---- the device (state tracking and memory resources; draws nothing) -----------------------------------------------------------------------------------------------------------

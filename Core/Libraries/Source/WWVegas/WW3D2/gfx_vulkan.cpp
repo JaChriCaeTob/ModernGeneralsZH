@@ -153,7 +153,8 @@ static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 
 
 uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
 
-static const VkDeviceSize kRingPerFrame = 64ull * 1024 * 1024;		// ring buffer space of one frame in flight
+static const VkDeviceSize kRingPerFrame = 64ull * 1024 * 1024;		// ring buffer space of one frame in flight at the start; it grows when a frame needs more (heavy mods)
+static const VkDeviceSize kRingMaxPerFrame = 512ull * 1024 * 1024;
 
 struct Backend
 {
@@ -237,6 +238,8 @@ struct Backend
 	VkBuffer ring = VK_NULL_HANDLE;
 	Allocation ringAlloc;
 	VkDeviceSize ringSize = 0, ringCursor = 0;
+	VkDeviceSize ringPerFrame = kRingPerFrame;
+	bool ringOverflow = false;						// a draw of the last frame did not fit: the ring grows before the next one
 	VkBuffer defaults = VK_NULL_HANDLE;
 	Allocation defaultsAlloc;
 	VkDeviceSize uboAlign = 256;
@@ -1052,8 +1055,9 @@ bool CreateInstanceAndDevice(HWND window)
 	CreatePostShaders();
 
 	// per frame ring buffer and the constant default vertex attributes
-	B.ringSize = 2 * kRingPerFrame;
-	B.ringBase = 0; B.ringLimit = kRingPerFrame; B.ringCursor = 0;
+	B.ringPerFrame = kRingPerFrame;
+	B.ringSize = 2 * B.ringPerFrame;
+	B.ringBase = 0; B.ringLimit = B.ringPerFrame; B.ringCursor = 0;
 	if (!CreateBuffer(B.ringSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, B.ring, B.ringAlloc))
 		return false;
@@ -1282,7 +1286,71 @@ void WriteShotFile()
 	g_shotPath.clear();
 }
 
+// ---- GPU copies of static vertex and index buffers -----------------------------------------------------------------------
+// Static buffers (models, terrain) are copied to the GPU once and drawn from there. Dynamic ones, and static ones that change every frame,
+// still go through the ring buffer. A changed buffer gets a new copy; the old one is freed when the GPU is done with it.
+struct GpuBuf { VkBuffer buf = VK_NULL_HANDLE; Allocation alloc; };
+
+void ReleaseGpuBuf(void* p)
+{
+	GpuBuf* g = (GpuBuf*)p;
+	if (!g) return;
+	if (B.ready && g->buf) B.deferredBuffers.push_back({ g->buf, g->alloc });
+	delete g;
+}
+
+template <class Buf> GpuBuf* CachedGpuBuffer(Buf* b, VkBufferUsageFlags usage)
+{
+	if (!b || !B.ready || b->m_gpuDynamic || (b->m_usage & GFX_USAGE_DYNAMIC) || b->m_data.empty())
+		return nullptr;
+	if (b->m_gpu && b->m_gpuVersion == b->m_version)
+		return (GpuBuf*)b->m_gpu;
+	if (b->m_gpu)
+	{
+		const bool again = g_frame - b->m_gpuFrame <= 2;		// changed again right after the last copy: this buffer is really dynamic
+		ReleaseGpuBuf(b->m_gpu);
+		b->m_gpu = nullptr;
+		if (again) { b->m_gpuDynamic = true; return nullptr; }
+	}
+	GpuBuf* g = new GpuBuf();
+	const VkDeviceSize size = std::max<size_t>(b->m_data.size(), 16);
+	bool ok = CreateBuffer(size, usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, g->buf, g->alloc);
+	if (!ok)
+		ok = CreateBuffer(size, usage, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, g->buf, g->alloc);
+	if (!ok)
+	{
+		delete g;
+		b->m_gpuDynamic = true;
+		return nullptr;
+	}
+	memcpy(g->alloc.mapped, b->m_data.data(), b->m_data.size());
+	b->m_gpu = g; b->m_gpuVersion = b->m_version; b->m_gpuFrame = g_frame;
+	return g;
+}
+
 uint32_t g_drawsLast = 0;
+VkDeviceSize g_ringPeak = 0;
+
+// A frame needed more vertex/index/uniform space than the ring buffer holds (mods with very detailed models): draws were dropped.
+// Called between two frames; waits for the GPU and makes the ring twice as large (up to kRingMaxPerFrame per frame).
+void GrowRing()
+{
+	vkDeviceWaitIdle(B.device);
+	const VkDeviceSize usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	const VkMemoryPropertyFlags props = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	VkBuffer nb = VK_NULL_HANDLE; Allocation na{};
+	const VkDeviceSize bigger = B.ringPerFrame * 2;
+	if (!CreateBuffer(2 * bigger, (VkBufferUsageFlags)usage, props, nb, na))
+	{
+		B.ringPerFrame = kRingMaxPerFrame;		// stop trying
+		return;
+	}
+	vkDestroyBuffer(B.device, B.ring, nullptr);
+	Free(B.ringAlloc);
+	B.ring = nb; B.ringAlloc = na;
+	B.ringPerFrame = bigger; B.ringSize = 2 * bigger;
+	Log("ring buffer grown to %u MB per frame", (unsigned)(bigger >> 20));
+}
 
 void PresentFrame()
 {
@@ -1291,6 +1359,7 @@ void PresentFrame()
 	struct RestoreTarget { GpuTexture* t; ~RestoreTarget() { B.curTarget = t; } } restoreTarget{ B.curTarget };
 	B.curTarget = nullptr;
 	++g_frame;
+	g_ringPeak = std::max<VkDeviceSize>(g_ringPeak, B.ringCursor - B.ringBase);
 	g_frameDrawLog = 0;
 	if (!g_drawTrace.empty())
 	{
@@ -1310,7 +1379,7 @@ void PresentFrame()
 		}
 	}
 	if (g_frame % 4000 == 0)
-		Log("frame %u: drawn %u, skipped: offscreen %u, pixel shader %u, vertex shader %u, stencil %u, ring full %u | calls: DrawPrimitive %u DrawIndexed %u UP %u IndexedUP %u | no vb %u no ib %u, no vertices %u, no rendering %u", g_frame, g_cnt[0], g_cnt[1], g_cnt[2], g_cnt[3], g_cnt[4], g_cnt[5], g_cnt[6], g_cnt[7], g_cnt[10], g_cnt[11], g_cnt[8], g_cnt[9], g_cnt[12], g_cnt[13]);
+		Log("frame %u: ring %u MB of %u, drawn %u, skipped: offscreen %u, pixel shader %u, vertex shader %u, stencil %u, ring full %u | calls: DrawPrimitive %u DrawIndexed %u UP %u IndexedUP %u | no vb %u no ib %u, no vertices %u, no rendering %u", g_frame, (unsigned)((B.ringCursor - B.ringBase) >> 20), (unsigned)(B.ringPerFrame >> 20), g_cnt[0], g_cnt[1], g_cnt[2], g_cnt[3], g_cnt[4], g_cnt[5], g_cnt[6], g_cnt[7], g_cnt[10], g_cnt[11], g_cnt[8], g_cnt[9], g_cnt[12], g_cnt[13]);
 	g_drawsLast = g_cnt[14];
 	memset(g_cnt, 0, sizeof(g_cnt));
 	const bool ready = (B.postOn && B.stage == 0 && B.hdr) ? RunPostProcess() : EnsureRendering();
@@ -1380,7 +1449,8 @@ void PresentFrame()
 		lastEnd = t1q;
 		if (++frames == 600)
 		{
-			Log("timing: %.2f ms per frame, of which the CPU waits %.2f ms for the GPU (%d draws last frame)", totalMs / 599.0, waitMs / 600.0, (int)g_drawsLast);
+			Log("timing: %.2f ms per frame, of which the CPU waits %.2f ms for the GPU (%d draws last frame, ring peak %u MB of %u)", totalMs / 599.0, waitMs / 600.0, (int)g_drawsLast, (unsigned)(g_ringPeak >> 20), (unsigned)(B.ringPerFrame >> 20));
+			g_ringPeak = 0;
 			waitMs = totalMs = 0.0; frames = 0; lastEnd.QuadPart = 0;
 		}
 	}
@@ -1391,7 +1461,10 @@ void PresentFrame()
 	B.pendingStaging = 0;
 	B.slot = next;
 	B.cmd = B.slots[next].cmd; B.uploadCmd = B.slots[next].uploadCmd; B.frameFence = B.slots[next].fence; B.imageAvailable = B.slots[next].imageAvailable;
-	B.ringBase = (VkDeviceSize)next * kRingPerFrame; B.ringLimit = B.ringBase + kRingPerFrame; B.ringCursor = B.ringBase;
+	if (B.ringOverflow && B.ringPerFrame < kRingMaxPerFrame)
+		GrowRing();
+	B.ringOverflow = false;
+	B.ringBase = (VkDeviceSize)next * B.ringPerFrame; B.ringLimit = B.ringBase + B.ringPerFrame; B.ringCursor = B.ringBase;
 	vkResetCommandBuffer(B.cmd, 0);
 	BeginCommandBuffer();
 	if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
@@ -1546,6 +1619,7 @@ public:
 			{
 				BeginCommandBuffer();
 				B.ready = true;
+				g_gpuBufferRelease = ReleaseGpuBuf;
 				Log("native Vulkan backend ready");
 			}
 			else
@@ -1724,7 +1798,10 @@ public:
 		++g_cnt[6];
 		if (!m_vb) { ++g_cnt[8]; return D3D_OK; }
 		const UINT verts = VertexCount(type, count);
-		return Submit(type, count, m_vb->m_data.data() + (size_t)start * m_stride, verts, nullptr, 0, 0, 0);
+		m_gVb = CachedGpuBuffer(m_vb, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT); m_gIb = nullptr; m_directStart = start;
+		const HRESULT hr = Submit(type, count, m_vb->m_data.data() + (size_t)start * m_stride, verts, nullptr, 0, 0, 0);
+		m_gVb = nullptr;
+		return hr;
 	}
 	STDMETHOD(DrawIndexedPrimitive)(THIS_ D3DPRIMITIVETYPE type, UINT minIndex, UINT numVertices, UINT startIndex, UINT count) override
 	{
@@ -1733,8 +1810,13 @@ public:
 		const bool wide = m_ib->m_format == D3DFMT_INDEX32;
 		const UINT indices = IndexCount(type, count);
 		const UINT firstVertex = m_baseVertex + minIndex;
-		return Submit(type, count, m_vb->m_data.data() + (size_t)firstVertex * m_stride, numVertices,
+		m_gVb = CachedGpuBuffer(m_vb, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT); m_gIb = m_gVb ? CachedGpuBuffer(m_ib, VK_BUFFER_USAGE_INDEX_BUFFER_BIT) : nullptr;
+		if (!m_gIb) m_gVb = nullptr;
+		m_directStart = startIndex;
+		const HRESULT hr = Submit(type, count, m_vb->m_data.data() + (size_t)firstVertex * m_stride, numVertices,
 			m_ib->m_data.data() + (size_t)startIndex * (wide ? 4 : 2), indices, wide, (int)minIndex);
+		m_gVb = nullptr; m_gIb = nullptr;
+		return hr;
 	}
 	STDMETHOD(DrawPrimitiveUP)(THIS_ D3DPRIMITIVETYPE type, UINT count, CONST void* data, UINT stride) override
 	{
@@ -1836,6 +1918,22 @@ private:
 		}
 		const UINT stride = m_stride ? m_stride : 16;
 
+		// The engine often passes the vertex range of a whole batch although a draw uses only a part of it (heavy models, forests):
+		// copy only the vertices the indices really reach.
+		const bool direct = m_gVb && (!indexCount || m_gIb);
+		if (!direct && indexCount && indices && numVertices > 64)
+		{
+			uint32_t lo = ~0u, hi = 0;
+			if (wide) { const uint32_t* ix = (const uint32_t*)indices; for (UINT k = 0; k < indexCount; ++k) { lo = std::min(lo, ix[k]); hi = std::max(hi, ix[k]); } }
+			else { const uint16_t* ix = (const uint16_t*)indices; for (UINT k = 0; k < indexCount; ++k) { lo = std::min<uint32_t>(lo, ix[k]); hi = std::max<uint32_t>(hi, ix[k]); } }
+			if (lo != ~0u && lo >= (uint32_t)minIndex && hi < (uint32_t)minIndex + numVertices && hi - lo + 1 < numVertices)
+			{
+				vertices = (const char*)vertices + (size_t)(lo - (uint32_t)minIndex) * stride;
+				numVertices = hi - lo + 1;
+				minIndex = (int)lo;
+			}
+		}
+
 		// copy this draw's data into the ring buffer
 		const VkDeviceSize vbytes = (VkDeviceSize)numVertices * stride;
 		const VkDeviceSize ibytes = (VkDeviceSize)indexCount * (wide ? 4 : 2);
@@ -1846,13 +1944,28 @@ private:
 			B.ringCursor = at + bytes;
 			return at;
 		};
-		const VkDeviceSize vOff = take(vbytes, 16), iOff = indexCount ? take(ibytes, 4) : 0, uOff = take(sizeof(DrawUbo), B.uboAlign);
-		if (vOff == ~0ull || iOff == ~0ull || uOff == ~0ull) { ++g_cnt[5]; return D3D_OK; }
-		memcpy((char*)B.ringAlloc.mapped + vOff, vertices, (size_t)vbytes);
-		if (indexCount)
+		VkDeviceSize vOff, iOff, uOff;
+		VkBuffer vbuf = B.ring, ibuf = B.ring;
+		int32_t vertexOffset = -minIndex;
+		if (direct)
 		{
-			// indices are relative to the first copied vertex when the offset is applied through vertexOffset
-			memcpy((char*)B.ringAlloc.mapped + iOff, indices, (size_t)ibytes);
+			// static buffers are drawn straight from their GPU copy
+			vOff = 0; iOff = 0; uOff = take(sizeof(DrawUbo), B.uboAlign);
+			vbuf = m_gVb->buf;
+			if (indexCount) { ibuf = m_gIb->buf; iOff = (VkDeviceSize)m_directStart * (wide ? 4 : 2); vertexOffset = (int32_t)m_baseVertex; }
+			else vOff = (VkDeviceSize)m_directStart * stride;
+			if (uOff == ~0ull) { ++g_cnt[5]; B.ringOverflow = true; return D3D_OK; }
+		}
+		else
+		{
+			vOff = take(vbytes, 16); iOff = indexCount ? take(ibytes, 4) : 0; uOff = take(sizeof(DrawUbo), B.uboAlign);
+			if (vOff == ~0ull || iOff == ~0ull || uOff == ~0ull) { ++g_cnt[5]; B.ringOverflow = true; return D3D_OK; }
+			memcpy((char*)B.ringAlloc.mapped + vOff, vertices, (size_t)vbytes);
+			if (indexCount)
+			{
+				// indices are relative to the first copied vertex when the offset is applied through vertexOffset
+				memcpy((char*)B.ringAlloc.mapped + iOff, indices, (size_t)ibytes);
+			}
 		}
 
 		DrawUbo u;
@@ -1997,7 +2110,7 @@ private:
 			&& (key.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST || key.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP))
 		{
 			GpuTexture* t0 = (m_tex[0] && u.flags[3]) ? EnsureGpuTexture(static_cast<NullTexture*>(m_tex[0])) : nullptr;
-			RecordCaster(u, vOff, iOff, (uint32_t)numVertices, (uint32_t)indexCount, wide, key.topology, fvf, stride, minIndex, t0, m_matrix[256][14]);
+			RecordCaster(u, vbuf, ibuf, vertexOffset, vOff, iOff, (uint32_t)numVertices, (uint32_t)indexCount, wide, key.topology, fvf, stride, minIndex, t0, m_matrix[256][14]);
 		}
 		if (g_frame == 50000)
 		{
@@ -2060,13 +2173,13 @@ private:
 		}
 		vkCmdPushDescriptorSetKHR(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, B.pipeLayout, 0, writes, w);
 
-		VkBuffer bufs[2] = { B.ring, B.defaults };
+		VkBuffer bufs[2] = { vbuf, B.defaults };
 		VkDeviceSize offs[2] = { vOff, 0 };
 		vkCmdBindVertexBuffers(B.cmd, 0, 2, bufs, offs);
 		if (indexCount)
 		{
-			vkCmdBindIndexBuffer(B.cmd, B.ring, iOff, wide ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
-			vkCmdDrawIndexed(B.cmd, indexCount, 1, 0, -minIndex, 0);
+			vkCmdBindIndexBuffer(B.cmd, ibuf, iOff, wide ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+			vkCmdDrawIndexed(B.cmd, indexCount, 1, 0, vertexOffset, 0);
 		}
 		else
 			vkCmdDraw(B.cmd, numVertices, 1, 0, 0);
@@ -2080,6 +2193,7 @@ private:
 	IDirect3DBaseTexture8* m_tex[8] = {};
 	NullVertexBuffer* m_vb = nullptr;
 	NullIndexBuffer* m_ib = nullptr;
+	GpuBuf* m_gVb = nullptr; GpuBuf* m_gIb = nullptr; UINT m_directStart = 0;		// GPU copies of the current buffers for the draw being submitted
 	UINT m_stride = 0, m_baseVertex = 0;
 	DWORD m_vertexShader = 0, m_pixelShader = 0;
 	float m_psConst[32][4] = {};

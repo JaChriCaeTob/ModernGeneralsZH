@@ -45,6 +45,8 @@ struct ShadowCaster
 {
 	DrawUbo u;
 	VkDeviceSize vOff, iOff;
+	VkBuffer vbuf, ibuf;				// the ring buffer, or the GPU copy of a static buffer
+	int32_t vertexOffset;
 	uint32_t numVertices, indexCount, wide, topology, fvf, stride;
 	int minIndex;
 	GpuTexture* tex0;

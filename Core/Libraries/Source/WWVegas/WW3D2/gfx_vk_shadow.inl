@@ -7,11 +7,12 @@
 
 bool ShadowsEnabled() { return g_sh.on && B.postOn && g_sh.haveSun; }
 
-void RecordCaster(const DrawUbo& u, VkDeviceSize vOff, VkDeviceSize iOff, uint32_t nv, uint32_t ni, int wide, uint32_t topology, uint32_t fvf, uint32_t stride, int minIndex, GpuTexture* tex0, float worldZ)
+void RecordCaster(const DrawUbo& u, VkBuffer vbuf, VkBuffer ibuf, int32_t vertexOffset, VkDeviceSize vOff, VkDeviceSize iOff, uint32_t nv, uint32_t ni, int wide, uint32_t topology, uint32_t fvf, uint32_t stride, int minIndex, GpuTexture* tex0, float worldZ)
 {
 	if (g_sh.casters.size() > 12000) return;
 	ShadowCaster c;
 	memcpy(&c.u, &u, sizeof(u));
+	c.vbuf = vbuf; c.ibuf = ibuf; c.vertexOffset = vertexOffset;
 	c.vOff = vOff; c.iOff = iOff; c.numVertices = nv; c.indexCount = ni; c.wide = (uint32_t)wide; c.topology = topology; c.fvf = fvf; c.stride = stride;
 	c.minIndex = minIndex; c.tex0 = tex0; c.groundZ = worldZ;
 	g_sh.casters.push_back(c);
@@ -177,13 +178,13 @@ bool RenderShadowMap(GpuTexture* m, const float* lightVP, const float* cullCente
 		w[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[5].dstBinding = 8; w[5].descriptorCount = 1;
 		w[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; w[5].pImageInfo = &depthImg;
 		vkCmdPushDescriptorSetKHR(B.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, B.pipeLayout, 0, 6, w);
-		VkBuffer bufs[2] = { B.ring, B.defaults };
+		VkBuffer bufs[2] = { c.vbuf, B.defaults };
 		VkDeviceSize offs[2] = { c.vOff, 0 };
 		vkCmdBindVertexBuffers(B.cmd, 0, 2, bufs, offs);
 		if (c.indexCount)
 		{
-			vkCmdBindIndexBuffer(B.cmd, B.ring, c.iOff, c.wide ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
-			vkCmdDrawIndexed(B.cmd, c.indexCount, 1, 0, -c.minIndex, 0);
+			vkCmdBindIndexBuffer(B.cmd, c.ibuf, c.iOff, c.wide ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+			vkCmdDrawIndexed(B.cmd, c.indexCount, 1, 0, c.vertexOffset, 0);
 		}
 		else
 			vkCmdDraw(B.cmd, c.numVertices, 1, 0, 0);

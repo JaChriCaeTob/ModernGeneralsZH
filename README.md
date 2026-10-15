@@ -52,11 +52,11 @@ Not affiliated with, or endorsed by, Electronic Arts. *Command & Conquer*, *Gene
 You need your own installed copy of the game(s) and a graphics card with a **Vulkan 1.3** driver (any current NVIDIA, AMD or Intel
 driver should have it; only an NVIDIA card was tested). Nothing of the original game is modified or replaced.
 
-1. Download `release_<version>.zip` (the newest one, for example `release_0.3.0.zip`) from the
+1. Download `release_<version>.zip` (the newest one, for example `release_0.3.1.zip`) from the
    [Releases page](https://github.com/JaChriCaeTob/ModernGeneralsZH/releases) or from the root of this repository and unzip it anywhere.
    It has one folder per game and a `README-INSTALL.txt`:
    ```
-   release_0.3.0.zip
+   release_0.3.1.zip
      README-INSTALL.txt
      Zero Hour\   for Command & Conquer: Generals - Zero Hour
      Generals\    for Command & Conquer: Generals (the base game)
@@ -262,6 +262,14 @@ names (`GFX_*`) so the backend can be swapped. `gfx_null.cpp` is an in-memory ba
 The backend code lives in `Core/` and is shared by both games. The game-specific parts are small: hooks in the scene (dynamic lights), the shadow
 managers, the options menu and the in-game UI exist in both `Generals/` and `GeneralsMD/`.
 
+### Static buffers on the GPU
+
+Models and terrain (vertex and index buffers that are not marked dynamic) are copied to the GPU once and drawn from there; only dynamic data (particles, skinned
+or sorted geometry) goes through the per-frame ring buffer, which grows by itself (64 MB up to 512 MB per frame) if a frame needs more. A buffer that changes again
+right after it was copied is treated as dynamic. Before this, every draw copied its vertices again: with a mod that has very detailed models (about 2000 draws and 227 MB
+of vertex data per frame) the frame time was about 37 ms and, before the ring grew, most draws were dropped (black screen); now it is about 5 ms. The stock games gain too
+(the Generals intro scene went from about 13 ms to about 3 ms per frame). `gfx_vulkan.log` shows the ring buffer use in its `timing:` lines.
+
 ### Frames in flight
 
 The renderer keeps two frames in flight: while the GPU draws one frame the CPU already records the next one (two command buffers, fences and ring-buffer halves, three swapchain images; resources of a finished frame are freed one frame later, and every command buffer starts with a global memory barrier so the frames cannot trample each other's images). On the test machine this took the intro scene from about 10 ms to about 6.6 ms per frame. `gfx_vulkan.log` gets a `timing:` line every 600 frames with the frame time and how long the CPU waited for the GPU.
@@ -356,6 +364,16 @@ Some regional editions replace models and textures through localized archives (f
 whose name contains `drone`. **No assets are included or downloaded.** What it finds depends on your own installation and any
 mod loaded with `-mod`. Only examined with a German Zero Hour install; the base game does not use this override, so the flag changes nothing there.
 
+## Other mods
+
+Mods that consist of data (`.big` archives, loose INI/scripts/maps) load as usual. This was tried with *The End of Days* (Zero Hour): its `!TEOD_*.big` files and loose
+`Data` files were copied into a Zero Hour folder next to this build, the mod's own `.exe` and `d3d8.dll` were **not** used, and a short skirmish played fine. Notes:
+
+- The mod's texts are English only. On a German (or other non-English) install the interface shows `MISSING: ...` unless you copy the mod's `Data\English\generals.csf`
+  into `Data\<your language>\` (for example `Data\German\`).
+- A mod that needs its own modified `.exe` (raised limits or engine changes) cannot use this build's exe unless the same changes are made in the source.
+- Only a short skirmish was played; longer games, the campaign and multiplayer are untested, and so is any other mod.
+
 ## Known problems and limitations
 
 - **Multiplayer:** untested. Do not use this build online or in LAN games against other players. Graphics changes are meant
@@ -363,6 +381,7 @@ mod loaded with `-mod`. Only examined with a German Zero Hour install; the base 
 - **Zero Hour is the main target.** The base game (`Generals/`) builds and runs with the same renderer and was given the same edits, but it has had far less testing.
 - **Vanishing bushes:** in the intro scene of Zero Hour some bushes on the slopes can disappear after a while (the original renderer keeps them). The cause was not found. It has not been seen as a problem in games.
 - **Sound:** some audio clips play back oddly. Not investigated.
+- **Heavy mods:** very large scenes use more CPU for drawing than the stock games (about 2000 draws per frame in the mod mentioned above).
 - **One test machine.** Other GPUs/drivers may show glitches, especially in the native renderer.
 - **Native renderer gaps:** no programmable shaders other than the two water shaders, no fixed-function fog (the game keeps fog disabled everywhere), no cube/volume textures, no
   multisampling, no gamma ramp. Menus, HUD and the 3D game are covered; anything that needs those paths is skipped or looks
@@ -427,7 +446,7 @@ powershell -File tools\dxvk\build-dxvk.ps1
 # Output: tools\dxvk\work\out\d3d8.dll d3d9.dll dxgi.dll
 
 # 5. package both games like the release zip
-powershell -File tools\make-release.ps1 -Version 0.3.0
+powershell -File tools\make-release.ps1 -Version 0.3.1
 # or install the Zero Hour build straight into a game folder:
 powershell -File tools\install-to-game.ps1 -GameDir "D:\Games\Command and Conquer Generals Zero Hour"
 ```
