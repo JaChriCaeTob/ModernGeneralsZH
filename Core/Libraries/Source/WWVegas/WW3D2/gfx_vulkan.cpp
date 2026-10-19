@@ -148,8 +148,10 @@ struct DrawUbo
 	float softA[4];
 	float softB[4];
 	float camPos[4];		// xyz: camera in world space, w: strength of the per pixel highlight (0 = per pixel lighting off)
+	float relief[4];		// scorch marks: x strength of the relief lighting (0 = off), y depth of the crater as a part of its radius, zw: size of one texel of the height map
+	float reliefSun[4];		// xyz: direction towards the sun, w: ambient part of the light
 };
-static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 + 8 * 16 + 32 + 32 + 16, "DrawUbo must match the std140 block in the shaders");
+static_assert(sizeof(DrawUbo) == 256 + 64 + 64 + 16 + 16 + 5 * 64 + 64 + 8 * 64 + 8 * 16 + 32 + 32 + 16 + 32, "DrawUbo must match the std140 block in the shaders");
 
 uint64_t g_uploads = 0, g_uploadBytes = 0, g_uploadFrameMark = 0;
 
@@ -1330,6 +1332,7 @@ template <class Buf> GpuBuf* CachedGpuBuffer(Buf* b, VkBufferUsageFlags usage)
 
 uint32_t g_drawsLast = 0;
 VkDeviceSize g_ringPeak = 0;
+float g_scorchRelief = 0.0f;		// VkGfx_ScorchRelief: the draws that follow are scorch marks with a height map in stage 1
 
 // A frame needed more vertex/index/uniform space than the ring buffer holds (mods with very detailed models): draws were dropped.
 // Called between two frames; waits for the GPU and makes the ring twice as large (up to kRingMaxPerFrame per frame).
@@ -1970,6 +1973,7 @@ private:
 
 		DrawUbo u;
 		memset(&u, 0, sizeof(u));
+		bool reliefOn = false;
 		float wv[16], wvp[16];
 		Multiply(m_matrix[256], m_matrix[2], wv);
 		Multiply(wv, m_matrix[3], wvp);
@@ -2070,6 +2074,15 @@ private:
 			for (int j = 0; j < 3; ++j) u.camPos[j] = -(V[12] * V[j * 4] + V[13] * V[j * 4 + 1] + V[14] * V[j * 4 + 2]);
 			u.camPos[3] = g_cfg.pixelLighting ? g_cfg.specularStrength : 0.0f;
 		}
+		reliefOn = g_scorchRelief > 0.0f && m_tex[1] && g_sh.haveSun;
+		if (reliefOn)
+		{
+			D3DSURFACE_DESC hd{};
+			static_cast<NullTexture*>(m_tex[1])->GetLevelDesc(0, &hd);
+			{ static bool logged = false; if (!logged) { logged = true; Log("scorch relief: height map %ux%u format %d, sun %.2f %.2f %.2f, strength %.2f", hd.Width, hd.Height, (int)hd.Format, g_sh.sun[0], g_sh.sun[1], g_sh.sun[2], g_scorchRelief); } }
+			u.relief[0] = g_scorchRelief; u.relief[1] = 0.30f; u.relief[2] = hd.Width ? 1.0f / hd.Width : 0.0f; u.relief[3] = hd.Height ? 1.0f / hd.Height : 0.0f;
+			memcpy(u.reliefSun, g_sh.sun, 12); u.reliefSun[3] = 0.45f;
+		}
 		memcpy((char*)B.ringAlloc.mapped + uOff, &u, sizeof(u));
 
 		PipeKey key;
@@ -2143,7 +2156,7 @@ private:
 		w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; w[0].dstBinding = 0; w[0].descriptorCount = 1; w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w[0].pBufferInfo = &ubo;
 		for (int s = 0; s < stageCount; ++s)
 		{
-			GpuTexture* g = (m_tex[s] && (waterKind || u.stage[2 * s][0] != 1)) ? EnsureGpuTexture(static_cast<NullTexture*>(m_tex[s])) : B.white;
+			GpuTexture* g = (m_tex[s] && (waterKind || u.stage[2 * s][0] != 1 || (s == 1 && reliefOn))) ? EnsureGpuTexture(static_cast<NullTexture*>(m_tex[s])) : B.white;
 			if (!g || g == B.passTarget) g = B.white;
 			const DWORD* t = m_stageStates[s];
 			imgs[s] = { GetSampler(t[D3DTSS_MINFILTER], t[D3DTSS_MAGFILTER], t[D3DTSS_MIPFILTER], t[D3DTSS_ADDRESSU] ? t[D3DTSS_ADDRESSU] : 1, t[D3DTSS_ADDRESSV] ? t[D3DTSS_ADDRESSV] : 1, t[D3DTSS_MAXANISOTROPY]),
@@ -2248,6 +2261,7 @@ void VkGfx_SetSceneLighting(const float ambient[3], const float diffuse[3])
 	for (int i = 0; i < 3; ++i) { g_fx.ambient[i] = ambient[i]; g_fx.diffuse[i] = diffuse[i]; }
 }
 void VkGfx_SetGameTime(float seconds) { g_gameTime = seconds; }
+void VkGfx_ScorchRelief(float strength) { g_scorchRelief = strength; }
 void VkGfx_ClearDynamicLights() { g_fx.lights.clear(); g_fx.testAdded = false; }
 void VkGfx_RequestScreenshot(const char* path) { if (path) g_shotPath = path; }
 void VkGfx_AddDynamicLight(const float pos[3], const float color[3], float range)
@@ -2346,6 +2360,7 @@ bool VkGfx_SoftDrawsActive() { return false; }
 void VkGfx_EndScene3D() {}
 void VkGfx_SetSceneLighting(const float*, const float*) {}
 void VkGfx_SetGameTime(float) {}
+void VkGfx_ScorchRelief(float) {}
 void VkGfx_ClearDynamicLights() {}
 void VkGfx_RequestScreenshot(const char*) {}
 void VkGfx_AddDynamicLight(const float*, const float*, float) {}

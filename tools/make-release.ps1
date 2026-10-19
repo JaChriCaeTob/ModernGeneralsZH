@@ -43,6 +43,9 @@ function New-GameFolder($name, $gameTitle, $buildDir, $exeIn, $exeOut)
     Set-Content (Join-Path $dir "Play-Updated.bat") ($common + "rem Updated graphics: native Vulkan renderer with all enhancements (Options.ini can switch single effects off).`r`n`"%~dp0x64\$exeOut`" -useCwd -win %*`r`n") -Encoding ASCII
     Set-Content (Join-Path $dir "Play-Original.bat") ($common + "rem Original rendering: Direct3D 8 through DXVK, no added effects.`r`nset GENERALS_GFX=d3d8`r`nset GENERALS_ORIGINAL=1`r`n`"%~dp0x64\$exeOut`" -useCwd -win %*`r`n") -Encoding ASCII
     Set-Content (Join-Path $dir "Install-OptionsMenu.bat") "@echo off`r`nrem Optional: adds the graphics check boxes to the in-game options menu. Needs Python 3. Reads the menu from your own game files and writes a patched copy next to them.`r`ncd /d `"%~dp0`"`r`npython tools\patch_options_wnd.py `"%~dp0.`"`r`nif errorlevel 1 echo Failed: is Python 3 installed and is this the $gameTitle folder?`r`npause`r`n" -Encoding ASCII
+    # scorch mark textures (generated, no game data): colour atlas and height map for the crater lighting
+    & python (Join-Path $PSScriptRoot "gen_scorch.py") $dir | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "gen_scorch.py failed (needs Python 3 with numpy and Pillow)" }
     # optional helpers: skip the startup movies for a quick start (moved, not deleted) and put them back
     Copy-Item (Join-Path $PSScriptRoot "release\Skip-IntroMovies.bat"), (Join-Path $PSScriptRoot "release\Restore-IntroMovies.bat") $dir
 }
@@ -75,7 +78,7 @@ Install (do this for each game you want)
 6. Optional: run Skip-IntroMovies.bat for a quick start without the EA logo and trailer. Nothing is deleted, the movies are moved
    to IntroMovies_off; Restore-IntroMovies.bat puts them back.
 
-Uninstall: delete the x64 and tools folders and the .bat files you copied and, if you installed it, the Window folder
+Uninstall: delete the x64, tools and Art folders and the .bat files you copied and, if you installed it, the Window folder
 (run Restore-IntroMovies.bat first if you used it).
 
 Experimental one-time project: no support, no updates. The Zero Hour version has had far more play time; the Generals version was

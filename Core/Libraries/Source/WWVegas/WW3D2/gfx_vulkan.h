@@ -43,6 +43,7 @@ bool VkGfx_SoftDrawsActive();
 void VkGfx_SuppressSceneDraws(bool suppress);		// the engine's own shadow draws to the back buffer are dropped while set
 void VkGfx_EndScene3D();
 void VkGfx_SetSceneLighting(const float ambient[3], const float diffuse[3]);		// the map's light colours (for the colour of the haze)
+void VkGfx_ScorchRelief(float strength);		// the following draws are scorch marks: stage 1 holds their height map and they are lit as shallow craters (0 = off)
 void VkGfx_SetGameTime(float seconds);		// game time: the clouds drift with it (the same moment of a game always looks the same)
 void VkGfx_RequestScreenshot(const char* bmpPath);		// the next presented frame is saved as a BMP
 void VkGfx_ClearDynamicLights();		// the lights of the frame are collected by the scene right before it is drawn

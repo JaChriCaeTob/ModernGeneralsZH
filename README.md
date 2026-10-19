@@ -52,11 +52,11 @@ Not affiliated with, or endorsed by, Electronic Arts. *Command & Conquer*, *Gene
 You need your own installed copy of the game(s) and a graphics card with a **Vulkan 1.3** driver (any current NVIDIA, AMD or Intel
 driver should have it; only an NVIDIA card was tested). Nothing of the original game is modified or replaced.
 
-1. Download `release_<version>.zip` (the newest one, for example `release_0.3.1.zip`) from the
+1. Download `release_<version>.zip` (the newest one, for example `release_0.4.0.zip`) from the
    [Releases page](https://github.com/JaChriCaeTob/ModernGeneralsZH/releases) or from the root of this repository and unzip it anywhere.
    It has one folder per game and a `README-INSTALL.txt`:
    ```
-   release_0.3.1.zip
+   release_0.4.0.zip
      README-INSTALL.txt
      Zero Hour\   for Command & Conquer: Generals - Zero Hour
      Generals\    for Command & Conquer: Generals (the base game)
@@ -77,7 +77,7 @@ driver should have it; only an NVIDIA card was tested). Nothing of the original 
 6. Optional: run **`Skip-IntroMovies.bat`** for a quick start without the EA logo and trailer. Nothing is deleted; the movies are moved
    to `IntroMovies_off` and **`Restore-IntroMovies.bat`** puts them back.
 
-**Uninstall:** delete the `x64` and `tools` folders and the `.bat` files you copied and, if you ran `Install-OptionsMenu.bat`, the loose
+**Uninstall:** delete the `x64`, `tools` and `Art` folders and the `.bat` files you copied and, if you ran `Install-OptionsMenu.bat`, the loose
 `Window` folder (run `Restore-IntroMovies.bat` first if you used the skip script).
 
 The zips contain no game files. Each is made by `tools\make-release.ps1 -Version <version>` from a finished build.
@@ -106,6 +106,7 @@ and `%USERPROFILE%\Documents\Command and Conquer Generals Data\` (Generals).
 | Anti-aliasing | FXAA on the 3D scene only. The interface, text and videos are not filtered. |
 | Dynamic lights | Explosions and other light pulses light the ground and units around them, wash out the sun's shadows nearby, and the strongest one casts shadows of its own. |
 | Per-pixel lighting | Units and buildings get a soft sun highlight and a faint rim light. Anisotropic texture filtering (16x) keeps ground textures sharp at shallow angles. |
+| Scorch marks | Explosion marks on the ground use new, larger textures (generated for this project, not taken from the game) and are lit as shallow craters with a bowl and a rim, in the direction of the sun. |
 | Clouds | Moving cloud shadows on the ground; optional visible volumetric clouds when the camera is high. |
 | Heat haze, shockwaves | The Microwave Tank's and the GPS Scrambler's distortion effect works; a screen-space ring on explosions that shake the camera or scorch the ground. |
 | Frame rate | Drawing is no longer tied to the 30 Hz game logic; frames are drawn as fast as the GPU allows while the simulation stays at 30 Hz. The CPU records the next frame while the GPU draws the current one. |
@@ -204,6 +205,8 @@ game itself, so use the main menu.
 | `CloudDensity` | `0.85` | Opacity of the clouds. |
 | `CloudSpeed` | `1` | Drift speed. |
 | `CloudShadowStrength` | `0.85` | How dark the cloud shadows are, 0 to 1. |
+| `ScorchRelief` | `yes` | `no` = the new scorch marks without the crater lighting (needs the height map `Art\Textures\exscorch01_h.dds` from the zip, otherwise it is off anyway). |
+| `ScorchReliefStrength` | `1.0` | Strength of the crater lighting (0 = off). |
 | `IntroTimer` | `no` | `yes` = show the game clock in the main menu scene (to tell when something happens in it). |
 | `Resolution` | game default | Use a resolution your display really supports at fullscreen. |
 
@@ -223,6 +226,8 @@ game itself, so use the main menu.
 | `GENERALS_LIGHTS` | `0` disables the dynamic lights of explosions; `GENERALS_LIGHTSTRENGTH` scales them. |
 | `GENERALS_PIXELLIGHT` | `0` switches back to per-vertex lighting. |
 | `GENERALS_ANISO` | anisotropic filtering level, `0` = off. |
+| `GENERALS_SCORCHRELIEF` | strength of the crater lighting of scorch marks (`0` = off), overrides `Options.ini`. |
+| `GENERALS_TESTSCORCH` | debugging: puts a few scorch marks around the middle of the view. |
 | `GENERALS_INTROTIMER` | any value: show the game clock in the main menu scene. |
 | `GENERALS_VALIDATION` | `1` turns the Vulkan validation layer on (needs the Vulkan SDK or `VK_LAYER_PATH`); messages go to `gfx_vulkan.log` and slow the game down a lot. |
 | `GENERALS_SHOTS`, `GENERALS_SHOTDIR`, `GENERALS_SHOTTAG` | timed screenshots: game times in seconds (`4,8,12`), target folder and file prefix. The interface is left out of the pictures unless `GENERALS_SHOTUI` is set. Used by `tools\compare-screenshots.ps1`. |
@@ -330,6 +335,15 @@ frame into a texture and redraw the ring zone as a displaced mesh. Disable with 
 ### Video sound
 
 The video player had sound code only for OpenAL builds; this build uses the miniaudio based Miles replacement, so the soundtrack of every movie was dropped. `FFmpegVideoStream::pushAudio` now converts the decoded sound to 16 bit interleaved with libswresample and hands it to `MiniMiles_VideoAudio*` (`Dependencies/Miles/MiniMilesVideo.h`), which plays it as a sound of the same audio engine through a ring buffer. The volume is the voice volume of the game, but never below 60%.
+
+### Scorch marks
+
+The engine draws scorch marks as a patch of the terrain mesh, textured from a 3x3 atlas (`EXScorch01`). This port ships two loose textures in `Art\Textures\` that replace
+the atlas: `exscorch01.dds` (colour and coverage, 2048x2048, four times the resolution of the original) and `exscorch01_h.dds` (height of the ground, 0.5 = flat). Both are
+generated by `tools\gen_scorch.py` (procedural noise, nothing from the game or from other people's textures), so they are our own work. The native renderer reads the height map in a
+special draw path for scorch marks (`VkGfx_ScorchRelief`, `scorchRelief()` in `gfx_fixed.frag`): the slope of the height gives a normal in world space, which is lit by the sun of the
+shadow pass; shaded parts become a dark layer, sunlit rims a light one, and the mark itself is shaded and gets dusty highlights on the rim. Only the look changes: the terrain geometry
+and the game logic are untouched (units drive straight across a "crater"). The classic renderer uses the new colour atlas without the relief.
 
 ### Intro timer and screenshots
 
@@ -446,7 +460,7 @@ powershell -File tools\dxvk\build-dxvk.ps1
 # Output: tools\dxvk\work\out\d3d8.dll d3d9.dll dxgi.dll
 
 # 5. package both games like the release zip
-powershell -File tools\make-release.ps1 -Version 0.3.1
+powershell -File tools\make-release.ps1 -Version 0.4.0
 # or install the Zero Hour build straight into a game folder:
 powershell -File tools\install-to-game.ps1 -GameDir "D:\Games\Command and Conquer Generals Zero Hour"
 ```

@@ -89,6 +89,8 @@ private:
 	DX8VertexBufferClass* m_vertexScorch;    ///< Scorch vertex buffer.
 	DX8IndexBufferClass* m_indexScorch;    ///< indices defining a triangles for the scorch drawing.
 	TextureClass* m_scorchTexture;    ///< Scorch mark texture
+	TextureClass* m_heightTexture;    ///< Height of the crater of the marks, for the relief lighting of the native Vulkan renderer (null: off)
+	Real m_reliefStrength;
 	Int m_curNumScorchVertices;    ///< number of vertices used in m_vertexScorch.
 	Int m_curNumScorchIndices;    ///< number of indices used in m_indexScorch.
 	std::deque<TScorch> m_scorches;

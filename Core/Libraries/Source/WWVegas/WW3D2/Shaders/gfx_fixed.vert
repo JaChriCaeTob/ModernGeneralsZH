@@ -40,6 +40,8 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	vec4 softA;
 	vec4 softB;
 	vec4 camPos;           // xyz: camera in world space, w: strength of the per pixel highlight (0 = lighting stays per vertex)
+	vec4 relief;           // scorch marks: x strength of the relief lighting (0 = off), y crater depth as a part of the radius, zw: texel size of the height map
+	vec4 reliefSun;        // xyz: direction towards the sun, w: ambient part of the light
 } draw;
 
 layout(location = 0) out vec4 vDiffuse;

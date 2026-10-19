@@ -30,6 +30,8 @@ layout(std140, set = 0, binding = 0) uniform Draw
 	vec4 softA;            // soft particles: projection [2][2], [3][2], fade distance, mode (0 off, 1 fade alpha, 2 fade colour)
 	vec4 softB;            // size in pixels of the depth image
 	vec4 camPos;           // xyz: camera in world space, w: strength of the per pixel highlight (0 = off)
+	vec4 relief;           // scorch marks: x strength of the relief lighting (0 = off), y crater depth as a part of the radius, zw: texel size of the height map
+	vec4 reliefSun;        // xyz: direction towards the sun, w: ambient part of the light
 } draw;
 
 layout(set = 0, binding = 1) uniform sampler2D tex0;
@@ -135,8 +137,45 @@ vec4 operate(uint op, vec4 a0, vec4 a1, vec4 a2, vec4 current, vec4 tex, vec4 di
 	return a1 * a2;
 }
 
+// Scorch marks: the mark itself, plus a crater lit from the height map in stage 1 (bowl and rim). Written as one layer that is blended like the
+// ordinary scorch draw: the relief shading becomes a black or light layer, and the mark goes over it.
+void scorchRelief()
+{
+	vec2 uv = vUv[0].xy;
+	vec4 mark = texture(tex0, uv);
+	vec2 px = draw.relief.zw;
+	vec2 s = max(fwidth(uv) * 0.75, px * 1.5);
+	float hx = texture(tex1, uv + vec2(s.x, 0.0)).a - texture(tex1, uv - vec2(s.x, 0.0)).a;
+	float hy = texture(tex1, uv + vec2(0.0, s.y)).a - texture(tex1, uv - vec2(0.0, s.y)).a;
+	float h = texture(tex1, uv).a;
+	// height 0..1 is -1..1 radii-fractions of the depth: dz/dX = dh/du * depth / 4 (the mark spans a quarter of the texture across twice its radius)
+	float k = draw.relief.y * 2.0 * 0.25 * 0.5 / (2.0 * s.x);
+	vec3 n = normalize(vec3(-hx * k, -hy * k * (s.x / s.y), 1.0));
+	vec3 l = normalize(draw.reliefSun.xyz);
+	float amb = draw.reliefSun.w;
+	float gain = (amb + (1.0 - amb) * max(dot(n, l), 0.0)) / (amb + (1.0 - amb) * max(l.z, 0.0));
+	float cavity = clamp((0.5 - h) * 2.0, 0.0, 1.0);                       // inside the bowl: darker
+	gain *= 1.0 - 0.35 * cavity;
+	float st = draw.relief.x;
+	float ra = clamp((1.0 - gain) * st * 1.4, 0.0, 0.9);                    // shaded side and bowl: a dark layer
+	float rl = clamp((gain - 1.0) * st * 0.9, 0.0, 0.6);                    // sunlit rim: a light layer
+	vec3 relCol = ra > 0.0 ? vec3(0.0) : vec3(1.0, 0.93, 0.8);
+	float relA = max(ra, rl);
+	// the mark itself is lit by the relief as well (dark soot on the shaded side of the bowl, dusty highlights on the sunlit rim)
+	float shade = clamp(gain, 0.3, 1.6);
+	vec3 sc = mark.rgb * vDiffuse.rgb * shade + vec3(1.0, 0.93, 0.8) * vDiffuse.rgb * max(gain - 1.0, 0.0) * 0.45 * st * mark.a;
+	float a = mark.a + relA * (1.0 - mark.a);
+	vec3 c = a > 0.0001 ? (sc * mark.a + relCol * relA * (1.0 - mark.a)) / a : sc;
+	outColor = vec4(clamp(c, 0.0, 1.0), clamp(a, 0.0, 1.0));
+}
+
 void main()
 {
+	if (draw.relief.x > 0.0)
+	{
+		scorchRelief();
+		return;
+	}
 	vec4 current = vDiffuse;
 	vec4 diffuse = vDiffuse;
 	vec3 highlight = vec3(0.0);

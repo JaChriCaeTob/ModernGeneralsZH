@@ -25,11 +25,17 @@
 #include "W3DDevice/GameClient/TerrainTex.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/gfx_vulkan.h"
+#include "Common/FileSystem.h"
+#include "Common/OptionPreferences.h"
+#include "GameClient/View.h"
 
 W3DScorch::W3DScorch(bool deduplicateScorches)
   : m_vertexScorch(nullptr)
   , m_indexScorch(nullptr)
   , m_scorchTexture(nullptr)
+  , m_heightTexture(nullptr)
+  , m_reliefStrength(0.0f)
   , m_curNumScorchVertices(0)
   , m_curNumScorchIndices(0)
   , m_needBufferRecompute(true)
@@ -44,6 +50,21 @@ void W3DScorch::allocateBuffers()
 	m_vertexScorch = NEW_REF(DX8VertexBufferClass, (DX8_FVF_XYZDUV1, MAX_SCORCH_VERTEX, DX8VertexBufferClass::USAGE_DEFAULT));
 	m_indexScorch = NEW_REF(DX8IndexBufferClass, (MAX_SCORCH_INDEX));
 	m_scorchTexture = NEW ScorchTextureClass;
+	// The native Vulkan renderer lights the marks as shallow craters from a height map (a loose file of this port: Art/Textures/exscorch01_h.dds)
+	if (VkGfx_NativeActive() && TheFileSystem && TheFileSystem->doesFileExist("Art/Textures/exscorch01_h.dds"))
+	{
+		OptionPreferences prefs;
+		OptionPreferences::const_iterator on = prefs.find("ScorchRelief");
+		OptionPreferences::const_iterator st = prefs.find("ScorchReliefStrength");
+		const char* env = getenv("GENERALS_SCORCHRELIEF");
+		const Bool wanted = env ? atof(env) > 0.0 : (on == prefs.end() || stricmp(on->second.str(), "no") != 0);
+		if (wanted)
+		{
+			m_reliefStrength = env ? (Real)atof(env) : (st != prefs.end() ? (Real)atof(st->second.str()) : 1.0f);
+			if (m_reliefStrength > 0.0f)
+				m_heightTexture = NEW TextureClass("EXScorch01_h.tga", "EXScorch01_h.tga", MIP_LEVELS_ALL);
+		}
+	}
 	invalidateBuffers();
 }
 
@@ -52,6 +73,7 @@ void W3DScorch::freeBuffers()
 	REF_PTR_RELEASE(m_vertexScorch);
 	REF_PTR_RELEASE(m_indexScorch);
 	REF_PTR_RELEASE(m_scorchTexture);
+	REF_PTR_RELEASE(m_heightTexture);
 }
 
 void W3DScorch::clearAllScorches()
@@ -72,6 +94,10 @@ void W3DScorch::invalidateTexture()
 	if (m_scorchTexture)
 	{
 		m_scorchTexture->Invalidate();
+	}
+	if (m_heightTexture)
+	{
+		m_heightTexture->Invalidate();
 	}
 }
 
@@ -117,6 +143,16 @@ Bool W3DScorch::isDuplicate(const TScorch& scorch) const
 
 void W3DScorch::drawScorches(WorldHeightMap& map)
 {
+	// debugging: GENERALS_TESTSCORCH=1 puts a few marks around the middle of the view once
+	static Bool testDone = FALSE;
+	if (!testDone && m_scorchTexture && TheTacticalView && getenv("GENERALS_TESTSCORCH") && m_deduplicateScorches == false)
+	{
+		testDone = TRUE;
+		Coord3D c = TheTacticalView->getPosition();
+		const Real r[6] = { 18.0f, 30.0f, 45.0f, 26.0f, 38.0f, 60.0f };
+		for (int i = 0; i < 6; ++i)
+			addScorch(Vector3(c.x - 90.0f + (i % 3) * 90.0f, c.y - 45.0f + (i / 3) * 90.0f, 0.0f), r[i], (Scorches)(i % 4));
+	}
 	updateScorches(map);
 	if (m_curNumScorchIndices == 0)
 	{
@@ -127,7 +163,17 @@ void W3DScorch::drawScorches(WorldHeightMap& map)
 	DX8Wrapper::Set_Shader(ShaderClass::_PresetAlphaShader);
 
 	DX8Wrapper::Set_Texture(0, m_scorchTexture);
+	if (m_heightTexture)
+	{
+		DX8Wrapper::Set_Texture(1, m_heightTexture);
+		VkGfx_ScorchRelief(m_reliefStrength);
+	}
 	DX8Wrapper::Draw_Triangles(0, m_curNumScorchIndices / 3, 0, m_curNumScorchVertices);
+	if (m_heightTexture)
+	{
+		VkGfx_ScorchRelief(0.0f);
+		DX8Wrapper::Set_Texture(1, nullptr);
+	}
 }
 
 static Real getMapHeight(WorldHeightMap& map, Int x, Int y)
